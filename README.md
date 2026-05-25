@@ -1,13 +1,13 @@
-# Chatbot MultiVacinas
+# Chatbot MultiVacinas — Ana
 
-Serviço Node.js/TypeScript que substitui o fluxo n8n da MultiVacinas.
+Serviço Node.js/TypeScript que substitui o fluxo n8n da MultiVacinas. A assistente virtual chama-se **Ana**.
 
 ## Stack
 - **Express** — servidor webhook
-- **OpenAI** (`gpt-4.1-mini` + Whisper + embeddings)
-- **Supabase** — base vetorial (pgvector)
+- **OpenAI** (`gpt-4.1-mini` + Whisper + embeddings) — agente + transcrição
+- **Supabase** — base vetorial (pgvector) + Postgres FTS (busca híbrida) + observabilidade
 - **Cohere** — reranker multilingual
-- **Chatwoot** — CRM / envio de mensagens
+- **Chatwoot** — CRM / envio de mensagens / persistência de BANT (additional_attributes)
 - **Telegram** — alertas de escalada para a equipe
 
 ## Estrutura
@@ -19,59 +19,43 @@ src/
 ├── types/
 │   └── chatwoot.types.ts       # Tipos do webhook
 ├── agents/
-│   ├── prompt.ts               # System prompt aprimorado
+│   ├── prompt.ts               # System prompt da Ana (humanizado)
 │   ├── tools.ts                # Ferramentas OpenAI (function calling)
 │   └── agent.ts                # Agentic loop + split de mensagens
 ├── controllers/
 │   └── webhook.controller.ts   # Handler do webhook Chatwoot
-└── services/
-    ├── chatwoot.service.ts     # API Chatwoot
-    ├── rag.service.ts          # Busca vetorial + reranker
-    ├── telegram.service.ts     # Alertas Telegram
-    └── queue.service.ts        # Debounce de mensagens encavaladas
+├── services/
+│   ├── chatwoot.service.ts     # API Chatwoot
+│   ├── rag.service.ts          # Busca híbrida (FTS+pgvector+RRF) + reranker
+│   ├── rag.cache.ts            # Cache LRU em memória das respostas RAG
+│   ├── telegram.service.ts     # Alertas Telegram
+│   └── queue.service.ts        # Debounce de mensagens encavaladas
+└── utils/
+    └── retry.ts                # Retry com backoff para APIs externas
+
+migrations/
+├── 001_match_documents_filter.sql  # Filtro de metadados no RPC vetorial
+├── 002_hybrid_search.sql           # Coluna FTS + função match_documents_hybrid
+└── 003_rag_logs.sql                # Tabela de observabilidade
+
+eval/
+├── questions.json              # 25 perguntas de baseline para o RAG
+└── run.ts                      # Runner do eval set (npm run eval:rag)
 ```
 
 ## Configuração
 
-1. Copiar `.env.example` para `.env` e preencher todas as variáveis.
+1. Copiar `.env.example` para `.env` e preencher todas as variáveis (ver tabela abaixo).
 2. Instalar dependências:
    ```bash
    npm install
    ```
-3. Garantir que a função RPC `match_documents` existe no Supabase (ver abaixo).
+3. Aplicar as migrations no Supabase (na ordem). Você pode rodar o SQL pelo painel ou via Supabase MCP / CLI:
+   - `migrations/001_match_documents_filter.sql`
+   - `migrations/002_hybrid_search.sql`
+   - `migrations/003_rag_logs.sql`
 
-## Função RPC no Supabase
-
-Execute no SQL Editor do Supabase:
-
-```sql
-create or replace function match_documents (
-  query_embedding vector(1536),
-  match_count int default 20
-)
-returns table (
-  id uuid,
-  content text,
-  metadata jsonb,
-  similarity float
-)
-language plpgsql
-as $$
-begin
-  return query
-  select
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) as similarity
-  from documents
-  order by documents.embedding <=> query_embedding
-  limit match_count;
-end;
-$$;
-```
-
-> **Nota:** Verifique o tamanho do embedding (1536 para `text-embedding-3-small`, 3072 para `text-embedding-3-large`). Ajuste se necessário.
+> **Embedding size:** as migrations assumem `vector(1536)` (text-embedding-3-small). Se usar `text-embedding-3-large`, troque para `vector(3072)`.
 
 ## Executar
 
@@ -82,6 +66,19 @@ npm run dev
 # Produção
 npm run build && npm start
 ```
+
+## Eval set do RAG
+
+```bash
+npm run eval:rag
+```
+
+Roda as 25 perguntas baseline contra o pipeline real (com cache desligado) e imprime uma tabela markdown com:
+- hit rate por status (`strong`/`weak`/`empty`)
+- conteúdo esperado vs. retornado (substrings case-insensitive sem acento)
+- latência média e p95
+
+Use o eval **antes e depois** de qualquer mudança no `rag.service.ts` ou na base de documentos para verificar regressão.
 
 ## Configurar Webhook no Chatwoot
 
@@ -99,14 +96,79 @@ Eventos: message_created
 | `PORT` | Porta do servidor (padrão: 3000) |
 | `OPENAI_API_KEY` | Chave da API OpenAI |
 | `OPENAI_MODEL` | Modelo de chat (padrão: gpt-4.1-mini) |
-| `OPENAI_EMBEDDING_MODEL` | Modelo de embedding |
+| `OPENAI_EMBEDDING_MODEL` | Modelo de embedding (padrão: text-embedding-3-small) |
 | `SUPABASE_URL` | URL do projeto Supabase |
 | `SUPABASE_SERVICE_KEY` | Chave de serviço do Supabase |
 | `COHERE_API_KEY` | Chave da API Cohere |
 | `CHATWOOT_BASE_URL` | URL base do Chatwoot |
 | `CHATWOOT_API_TOKEN` | Token de acesso da conta Chatwoot |
 | `TELEGRAM_BOT_TOKEN` | Token do bot Telegram |
-| `TELEGRAM_CHAT_ID` | ID do chat/grupo para alertas |
+| `TELEGRAM_CHAT_ID` | ID do chat/grupo para alertas (fallback global) |
 | `MESSAGE_DEBOUNCE_MS` | Janela de debounce em ms (padrão: 20000) |
-| `RAG_TOP_K` | Documentos retornados antes do reranker (padrão: 20) |
+| `RAG_TOP_K` | Documentos retornados pela busca antes do reranker (padrão: 20) |
 | `RAG_TOP_N` | Documentos após reranker (padrão: 5) |
+| `RAG_EXPAND_MODEL` | Modelo usado na query expansion (padrão: gpt-4.1-mini) |
+| `RAG_CACHE_DISABLED` | `true` para desligar o cache em memória do RAG |
+
+## Migrations no Supabase (referência rápida)
+
+### `match_documents` (com filtro)
+Aceita filtro opcional de metadados:
+```sql
+select * from match_documents(
+  '[1,2,3,...]'::vector,
+  20,
+  '{"faixa_etaria": "adolescente"}'::jsonb
+);
+```
+
+### `match_documents_hybrid` (FTS + vetor + RRF)
+Combina busca vetorial e full-text com Reciprocal Rank Fusion (k=60):
+```sql
+select * from match_documents_hybrid(
+  'vacina HPV adolescente Gardasil',
+  '[...]'::vector,
+  20,
+  '{"tipo": "bula"}'::jsonb
+);
+```
+
+### `rag_logs`
+Cada chamada de `searchDocuments` registra um log para calibrar thresholds e ver perguntas que caem em `empty`. Útil para investigar:
+```sql
+select created_at, original_query, status, top_score, latency_ms
+from rag_logs
+order by created_at desc
+limit 50;
+
+-- Perguntas frequentes que caem em empty
+select original_query, count(*) as freq
+from rag_logs
+where status = 'empty' and created_at > now() - interval '7 days'
+group by original_query
+order by freq desc;
+```
+
+## Persistência do BANT
+
+A Ana grava o BANT que coleta em `additional_attributes.bant` no contato (visível no Chatwoot). Em conversas futuras com o mesmo contato, ela carrega o BANT existente e não repete perguntas. A escalação para humano (Telegram) reaproveita o BANT salvo automaticamente.
+
+## Estrutura recomendada de metadados nos documentos
+
+Para tirar proveito do filtro de metadados (Fase 3.3), popule `metadata` na tabela `documents` com:
+
+```json
+{
+  "vacina": "gardasil_9",
+  "tipo": "bula",
+  "faixa_etaria": "adolescente",
+  "fonte": "gardasi_9_bula_pro.pdf"
+}
+```
+
+Valores aceitos:
+- `tipo`: `"bula"` | `"calendario"`
+- `faixa_etaria`: `"crianca"` | `"adolescente"` | `"adulto"` | `"idoso"` | `"gestante"` | `"todos"`
+- `vacina`: slug livre (ex.: `"gardasil_9"`, `"shingrix"`).
+
+Sem metadados, a busca continua funcionando — apenas perde a possibilidade de filtrar.

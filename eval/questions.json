@@ -1,0 +1,178 @@
+[
+  {
+    "id": "Q01",
+    "query": "vocês têm vacina da febre amarela?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Stamaril"],
+    "filtros": {}
+  },
+  {
+    "id": "Q02",
+    "query": "qual a vacina contra HPV para adolescente?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Gardasil"],
+    "filtros": { "faixa_etaria": "adolescente" }
+  },
+  {
+    "id": "Q03",
+    "query": "vacina meningite ACWY",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Menveo"],
+    "filtros": {}
+  },
+  {
+    "id": "Q04",
+    "query": "qual a dose de Shingrix para herpes zoster?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Shingrix"],
+    "filtros": {}
+  },
+  {
+    "id": "Q05",
+    "query": "vacina febre tifoide para viagem",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Typhim"],
+    "filtros": {}
+  },
+  {
+    "id": "Q06",
+    "query": "tem vacina contra dengue?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Qdenga"],
+    "filtros": {}
+  },
+  {
+    "id": "Q07",
+    "query": "vacina rotavírus para bebê",
+    "expected_status": "strong",
+    "expected_docs_contain": ["RotaTeq", "rotavírus"],
+    "filtros": { "faixa_etaria": "crianca" }
+  },
+  {
+    "id": "Q08",
+    "query": "vacina meningite B Bexsero",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Bexsero"],
+    "filtros": {}
+  },
+  {
+    "id": "Q09",
+    "query": "qual a vacina hepatite A B combinada?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Twinrix"],
+    "filtros": {}
+  },
+  {
+    "id": "Q10",
+    "query": "vacina pneumocócica 20 valente",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Prevenar 20", "Prevenar-20"],
+    "filtros": {}
+  },
+  {
+    "id": "Q11",
+    "query": "vacina contra catapora varicela",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Varivax", "varicela"],
+    "filtros": {}
+  },
+  {
+    "id": "Q12",
+    "query": "vacina hepatite B adulto Engerix",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Engerix"],
+    "filtros": {}
+  },
+  {
+    "id": "Q13",
+    "query": "VSR proteção bebê Beyfortus",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Beyfortus"],
+    "filtros": {}
+  },
+  {
+    "id": "Q14",
+    "query": "vacina RSV gestante Abrysvo",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Abrysvo"],
+    "filtros": { "faixa_etaria": "gestante" }
+  },
+  {
+    "id": "Q15",
+    "query": "vacina gripe quadrivalente Influvac",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Influvac"],
+    "filtros": {}
+  },
+  {
+    "id": "Q16",
+    "query": "vacina sarampo caxumba rubéola catapora",
+    "expected_status": "strong",
+    "expected_docs_contain": ["ProQuad"],
+    "filtros": {}
+  },
+  {
+    "id": "Q17",
+    "query": "qual o esquema de Infanrix hexa para bebê?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Infanrix"],
+    "filtros": { "faixa_etaria": "crianca" }
+  },
+  {
+    "id": "Q18",
+    "query": "vacina dTpa refortrix coqueluche",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Refortrix", "dTpa"],
+    "filtros": {}
+  },
+  {
+    "id": "Q19",
+    "query": "calendário de vacinação adulto SBIm",
+    "expected_status": "strong",
+    "expected_docs_contain": ["adulto", "SBIm"],
+    "filtros": { "tipo": "calendario", "faixa_etaria": "adulto" }
+  },
+  {
+    "id": "Q20",
+    "query": "calendário de vacinação adolescente 10 a 19 anos",
+    "expected_status": "strong",
+    "expected_docs_contain": ["adolescente"],
+    "filtros": { "tipo": "calendario", "faixa_etaria": "adolescente" }
+  },
+  {
+    "id": "Q21",
+    "query": "vacina hepatite A pediátrica Vaqta",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Vaqta"],
+    "filtros": {}
+  },
+  {
+    "id": "Q22",
+    "query": "vacina pneumonia idoso Vaxneuvance",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Vaxneuvance"],
+    "filtros": {}
+  },
+  {
+    "id": "Q23",
+    "query": "vacina gripe alta dose Efluelda idoso",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Efluelda"],
+    "filtros": { "faixa_etaria": "idoso" }
+  },
+  {
+    "id": "Q24",
+    "query": "vacina contra RSV adulto Arexvy",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Arexvy"],
+    "filtros": {}
+  },
+  {
+    "id": "Q25",
+    "query": "eu queria saber sobre uma coisa lá",
+    "expected_status": "empty",
+    "expected_docs_contain": [],
+    "filtros": {},
+    "_note": "Query intencionalmente vaga — esperamos topScore baixo e status empty/weak."
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node _fix_splitter.cjs)",
+      "Bash(node _fix_strip.cjs)"
+    ]
+  }
+}

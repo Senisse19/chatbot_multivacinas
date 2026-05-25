@@ -76,6 +76,8 @@ const envSchema = z.object({
   MESSAGE_DEBOUNCE_MS: z.string().default("20000"),
   RAG_TOP_K: z.string().default("20"),
   RAG_TOP_N: z.string().default("5"),
+  RAG_EXPAND_MODEL: z.string().default("gpt-4.1-mini"),
+  RAG_CACHE_DISABLED: z.string().default("false"),
 });
 
 // ─── Build da config ──────────────────────────────────────────────────────────
@@ -166,6 +168,8 @@ function loadConfig() {
       messageDebouncesMs: parseInt(env.MESSAGE_DEBOUNCE_MS, 10),
       ragTopK: parseInt(env.RAG_TOP_K, 10),
       ragTopN: parseInt(env.RAG_TOP_N, 10),
+      ragExpandModel: env.RAG_EXPAND_MODEL,
+      ragCacheDisabled: env.RAG_CACHE_DISABLED === "true",
     },
   } as const;
 }

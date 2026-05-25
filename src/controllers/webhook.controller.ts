@@ -7,14 +7,22 @@ import { chatwootService } from "../services/chatwoot.service";
 import { enqueueMessage } from "../services/queue.service";
 import { runAgent, splitIntoMessages } from "../agents/agent";
 import { isEscalated } from "../agents/tools";
+import { sendEscalationAlert } from "../services/telegram.service";
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
+
+// Intervalo de refresh do "digitando…" — Chatwoot/WhatsApp derrubam o
+// indicador em ~10-15s, então refrescamos a cada 8s enquanto o agente roda.
+const TYPING_REFRESH_MS = 8_000;
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
 
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
   // Responder imediatamente para o Chatwoot não reenviar
   res.status(200).json({ ok: true });
+
+  // ctx é hoisted para ficar disponível no catch (mensagem de fallback)
+  let ctx: MessageContext | undefined;
 
   try {
     const payload = req.body as ChatwootWebhookPayload;
@@ -44,7 +52,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     // ── 4. Transcrição de áudio (via Whisper) ─────────────────────────────
     if (isAudio && payload.attachments?.[0]?.data_url) {
-      content = await transcribeAudio(payload.attachments[0].data_url, payload);
+      content = await transcribeAudio(payload.attachments[0].data_url);
     }
 
     // Ignorar mensagem sem conteúdo (ex: sticker, doc sem legenda)
@@ -53,11 +61,12 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const ctx: MessageContext = {
+    ctx = {
       messageId: msg.id,
       accountId: msg.account_id,
       conversationId: conv.id,
       inboxId: conv.inbox_id,
+      contactId: msg.sender?.id ?? payload.sender?.id ?? 0,
       phone,
       name,
       content,
@@ -71,15 +80,32 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
     // ── 5. Fila de debounce (agrupa mensagens encavaladas) ─────────────────
     const batch = await enqueueMessage(ctx);
 
+    // Follow-up calls (mensagens encavaladas após a primária) recebem `null`
+    // e devem parar aqui — a primária já está processando o batch completo.
+    if (batch === null) {
+      console.log(`[Webhook] Mensagem ${ctx.messageId} agrupada no batch primário, ignorando.`);
+      return;
+    }
+
     // Marcar como lida
     await chatwootService.markAsRead(ctx.accountId, ctx.conversationId);
 
-    // ── 6. Executar agente ────────────────────────────────────────────────
+    // ── 6. Executar agente (com refresh contínuo do "digitando…") ──────────
     await chatwootService.setTyping(ctx.accountId, ctx.conversationId, true);
+    const typingTimer = setInterval(() => {
+      chatwootService
+        .setTyping(ctx!.accountId, ctx!.conversationId, true)
+        .catch(() => {});
+    }, TYPING_REFRESH_MS);
 
-    const { replies, escalated } = await runAgent(batch);
-
-    await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false);
+    let replies: string[];
+    let escalated: boolean;
+    try {
+      ({ replies, escalated } = await runAgent(batch));
+    } finally {
+      clearInterval(typingTimer);
+      await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false);
+    }
 
     // Se escalado, o agente já enviou a mensagem de transição
     if (escalated) {
@@ -100,15 +126,50 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
     }
   } catch (err) {
     console.error("[Webhook] Erro no processamento:", err);
+    if (ctx) {
+      await sendFallbackAndEscalate(ctx).catch((fallbackErr) => {
+        console.error("[Webhook] Fallback também falhou:", fallbackErr);
+      });
+    }
   }
+}
+
+// ─── Fallback de falha técnica ────────────────────────────────────────────────
+//
+// Quando algo dá errado no meio do processamento (OpenAI/Cohere/Supabase fora,
+// timeout, erro inesperado), o usuário não pode ficar no escuro. Mandamos uma
+// mensagem cordial, marcamos a conversa como agente-off (para não tentar de
+// novo) e alertamos a equipe via Telegram.
+
+async function sendFallbackAndEscalate(ctx: MessageContext): Promise<void> {
+  // Evita duplicar fallback se já está escalado
+  const labels = await chatwootService.getLabels(ctx.accountId, ctx.conversationId);
+  if (labels.includes("agente-off")) return;
+
+  await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false).catch(() => {});
+
+  await chatwootService.sendMessage(
+    ctx.accountId,
+    ctx.conversationId,
+    "Tive uma instabilidade aqui de momento. Vou chamar um atendente para continuar com você.",
+  );
+
+  await chatwootService.addLabel(ctx.accountId, ctx.conversationId, "agente-off");
+
+  await sendEscalationAlert({
+    phone: ctx.phone,
+    name: ctx.name,
+    lastMessage: ctx.content,
+    conversationId: ctx.conversationId,
+    summary: "Handover automático por falha técnica no processamento.",
+    telegramChatId: ctx.unit.telegramChatId,
+    unitName: ctx.unit.fullName,
+  });
 }
 
 // ─── Transcrição de Áudio ─────────────────────────────────────────────────────
 
-async function transcribeAudio(
-  audioUrl: string,
-  payload: ChatwootWebhookPayload,
-): Promise<string> {
+async function transcribeAudio(audioUrl: string): Promise<string> {
   try {
     const buffer = await chatwootService.downloadFile(audioUrl);
     const file = new File([buffer], "audio.ogg", { type: "audio/ogg" });
@@ -119,7 +180,9 @@ async function transcribeAudio(
       language: "pt",
     });
 
-    return `[Áudio transcrito]: ${transcription.text}`;
+    // Sem prefixo "[Áudio transcrito]:" — a sinalização vai pelo campo
+    // `isAudio` do MessageContext e é tratada no prompt da Ana.
+    return transcription.text;
   } catch (err) {
     console.error("[Webhook] Erro ao transcrever áudio:", err);
     return "";

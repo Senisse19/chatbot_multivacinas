@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "./prompt";
 import { TOOLS, executeTool, ToolContext } from "./tools";
 import { MessageContext } from "../types/chatwoot.types";
 import { chatwootService } from "../services/chatwoot.service";
+import { withRetry } from "../utils/retry";
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
@@ -31,26 +32,58 @@ export async function runAgent(
   const ctx = messages[messages.length - 1];
   const combinedContent = messages.map((m) => m.content).filter(Boolean).join("\n");
 
-  // ─── Histórico da conversa ────────────────────────────────────────────────
-  const history = await chatwootService.getConversationMessages(
-    ctx.accountId,
-    ctx.conversationId,
-    config.agent.historyWindow,
-  );
+  // ─── Histórico + BANT persistido (em paralelo) ────────────────────────────
+  const [history, contactAttrs] = await Promise.all([
+    chatwootService.getConversationMessages(
+      ctx.accountId,
+      ctx.conversationId,
+      config.agent.historyWindow,
+    ),
+    ctx.contactId
+      ? chatwootService.getContactAttributes(ctx.accountId, ctx.contactId)
+      : Promise.resolve({} as Record<string, unknown>),
+  ]);
+
+  const savedBant = (contactAttrs.bant as Record<string, string> | undefined) ?? {};
 
   // ─── System prompt ────────────────────────────────────────────────────────
+  // firstContact: nenhuma mensagem da Ana ainda → primeira interação real.
+  // (history vem do Chatwoot já filtrado por role="user"|"assistant")
+  const firstContact = !history.some((h) => h.role === "assistant");
+
   const systemPrompt = buildSystemPrompt({
-    phone: ctx.phone,
+    name: ctx.name,
     conversationId: ctx.conversationId,
     now: new Date(),
     unit: ctx.unit,
+    firstContact,
+    isAudio: messages.some((m) => m.isAudio),
+    savedBant,
   });
+
+  // ─── Limpeza do histórico ─────────────────────────────────────────────────
+  // O Chatwoot já guardou todas as mensagens do batch. Se mantivermos todas e
+  // ainda assim adicionarmos `combinedContent`, mensagens do batch aparecem
+  // duplicadas no contexto. Removemos do histórico qualquer mensagem do
+  // usuário cujo conteúdo coincida com algum item do batch atual.
+  const batchContents = new Set(
+    messages.map((m) => m.content).filter((c) => c && c.trim().length > 0),
+  );
+  const cleanHistory = history.filter(
+    (h) => !(h.role === "user" && batchContents.has(h.content)),
+  );
+
+  if (cleanHistory.length !== history.length - messages.length) {
+    console.warn(
+      `[Agent] Limpeza de histórico inesperada: history=${history.length}, batch=${messages.length}, clean=${cleanHistory.length}`,
+    );
+  }
 
   // ─── Construção do array de mensagens ─────────────────────────────────────
   const conversationMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
-    // Histórico anterior
-    ...history.slice(0, -1).map(
+    // Histórico anterior (sem as mensagens do batch atual)
+    ...cleanHistory.map(
       (m): ChatCompletionMessageParam => ({
         role: m.role,
         content: m.content,
@@ -66,6 +99,7 @@ export async function runAgent(
     lastMessage: combinedContent,
     accountId: ctx.accountId,
     conversationId: ctx.conversationId,
+    contactId: ctx.contactId,
     messageId: ctx.messageId,
     telegramChatId: ctx.unit.telegramChatId,
     unitName: ctx.unit.fullName,
@@ -76,14 +110,18 @@ export async function runAgent(
   const finalReplies: string[] = [];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await openai.chat.completions.create({
-      model: config.openai.model,
-      messages: conversationMessages,
-      tools: TOOLS,
-      tool_choice: "auto",
-      temperature: 0.3,
-      max_tokens: 1024,
-    });
+    const response = await withRetry(
+      () =>
+        openai.chat.completions.create({
+          model: config.openai.model,
+          messages: conversationMessages,
+          tools: TOOLS,
+          tool_choice: "auto",
+          temperature: 0.3,
+          max_tokens: 1024,
+        }),
+      { label: "openai.chat.completions" },
+    );
 
     const choice = response.choices[0];
     const message = choice.message;
@@ -148,11 +186,42 @@ export async function splitIntoMessages(text: string): Promise<string[]> {
     return paragraphs;
   }
 
-  // Se não houver parágrafos claros, dividir ao final de sentenças para no máximo 2 partes
-  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [text];
+  // Fallback: dividir por sentenças, preservando abreviações comuns
+  const sentences = splitSentences(text);
+  if (sentences.length <= 1) return [text.trim()];
+
   const mid = Math.ceil(sentences.length / 2);
   return [
     sentences.slice(0, mid).join(" ").trim(),
     sentences.slice(mid).join(" ").trim(),
   ].filter((s) => s.length > 0);
+}
+
+// Abreviações pt-BR comuns que não devem terminar frase. Antes do regex de
+// sentença, substituímos o ponto por um placeholder da Private Use Area
+// (\uE000), garantidamente ausente do texto real, e restauramos depois.
+const DOT_PH = "\uE000";
+
+const ABBREV_PATTERNS: Array<[RegExp, string]> = [
+  [/\bDr\./g, `Dr${DOT_PH}`],
+  [/\bDra\./g, `Dra${DOT_PH}`],
+  [/\bSr\./g, `Sr${DOT_PH}`],
+  [/\bSra\./g, `Sra${DOT_PH}`],
+  [/\bex\./g, `ex${DOT_PH}`],
+  [/\bAv\./g, `Av${DOT_PH}`],
+  [/\bnº\./g, `nº${DOT_PH}`],
+  // Números com separador decimal/milhar: 1.000 ou 1.5
+  [/(\d)\.(\d)/g, `$1${DOT_PH}$2`],
+];
+
+function splitSentences(text: string): string[] {
+  let protectedText = text;
+  for (const [from, to] of ABBREV_PATTERNS) {
+    protectedText = protectedText.replace(from, to);
+  }
+
+  const matched = protectedText.match(/[^.!?]+[.!?]+(\s|$)/g);
+  if (!matched) return [text];
+
+  return matched.map((s) => s.replace(new RegExp(DOT_PH, "g"), "."));
 }

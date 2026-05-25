@@ -96,6 +96,60 @@ class ChatwootService {
     );
   }
 
+  // ─── Alterar status da conversa (open / resolved / pending / snoozed) ──────
+
+  async toggleStatus(
+    accountId: number,
+    conversationId: number,
+    status: "open" | "resolved" | "pending" | "snoozed",
+  ): Promise<void> {
+    await this.client
+      .post(
+        `/api/v1/accounts/${accountId}/conversations/${conversationId}/toggle_status`,
+        { status },
+      )
+      .catch((err) => {
+        console.error(
+          `[Chatwoot] Falha ao alterar status para ${status} na conversa ${conversationId}:`,
+          err?.response?.data || err?.message,
+        );
+      });
+  }
+
+  // ─── Atributos adicionais do contato (usado para persistir BANT) ───────────
+
+  async getContactAttributes(
+    accountId: number,
+    contactId: number,
+  ): Promise<Record<string, unknown>> {
+    const res = await this.client
+      .get(`/api/v1/accounts/${accountId}/contacts/${contactId}`)
+      .catch(() => null);
+    const data = res?.data?.payload ?? res?.data ?? {};
+    return (data.additional_attributes as Record<string, unknown>) ?? {};
+  }
+
+  async updateContactAttributes(
+    accountId: number,
+    contactId: number,
+    attrs: Record<string, unknown>,
+  ): Promise<void> {
+    // Merge com atributos existentes para não sobrescrever campos não tocados
+    const existing = await this.getContactAttributes(accountId, contactId);
+    const merged = { ...existing, ...attrs };
+
+    await this.client
+      .patch(`/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+        additional_attributes: merged,
+      })
+      .catch((err) => {
+        console.error(
+          `[Chatwoot] Falha ao atualizar atributos do contato ${contactId}:`,
+          err?.response?.data || err?.message,
+        );
+      });
+  }
+
   // ─── Buscar histórico de mensagens ─────────────────────────────────────────
 
   async getConversationMessages(

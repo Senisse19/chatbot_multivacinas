@@ -83,6 +83,7 @@ export interface MessageContext {
   accountId: number;
   conversationId: number;
   inboxId: number;
+  contactId: number; // id do contato no Chatwoot (para BANT persistido)
   phone: string;
   name: string;
   content: string; // texto ou transcrição do áudio

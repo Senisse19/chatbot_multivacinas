@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "eval:rag": "tsx eval/run.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
