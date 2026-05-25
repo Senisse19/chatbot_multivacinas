@@ -33,11 +33,14 @@ export async function sendEscalationAlert(params: EscalarHumanoParams): Promise<
     summaryBlock +
     `\n\n_Acesse o Chatwoot para continuar o atendimento._`;
 
-  await axios.post(`${TELEGRAM_API}/sendMessage`, {
-    chat_id: chatId,
-    text,
-    parse_mode: "Markdown",
-  });
-
-  console.log(`[Telegram] Alerta enviado → chat_id: ${chatId} | unidade: ${unitName ?? "padrão"}`);
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text,
+      parse_mode: "Markdown",
+    });
+    console.log(`[Telegram] Alerta enviado → chat_id: ${chatId} | unidade: ${unitName ?? "padrão"}`);
+  } catch (error: any) {
+    console.error(`[Telegram] Erro ao enviar alerta para chat_id ${chatId}:`, error?.response?.data || error.message);
+  }
 }
