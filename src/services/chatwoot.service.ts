@@ -49,28 +49,6 @@ class ChatwootService {
     );
   }
 
-  // ─── Enviar reação com emoji ────────────────────────────────────────────────
-
-  async sendReaction(
-    accountId: number,
-    conversationId: number,
-    messageId: number,
-    emoji: string,
-  ): Promise<void> {
-    await this.client
-      .post(
-        `/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
-        {
-          content: emoji,
-          content_attributes: {
-            in_reply_to: messageId,
-            is_reaction: true,
-          },
-        },
-      )
-      .catch(() => { /* não fatal */ });
-  }
-
   // ─── Listar etiquetas da conversa ──────────────────────────────────────────
 
   async getLabels(accountId: number, conversationId: number): Promise<string[]> {
@@ -82,6 +60,12 @@ class ChatwootService {
   }
 
   // ─── Adicionar etiqueta à conversa ─────────────────────────────────────────
+  //
+  // O endpoint /labels SUBSTITUI a lista inteira (não acrescenta). Fazemos
+  // merge antes de enviar. Logamos o payload retornado para confirmar — se
+  // o label estiver no payload mas não aparecer na UI, é o bug #12792 do
+  // Chatwoot (labels via API não renderizam até a label estar cadastrada em
+  // Settings → Labels da conta).
 
   async addLabel(
     accountId: number,
@@ -89,11 +73,32 @@ class ChatwootService {
     label: string,
   ): Promise<void> {
     const existing = await this.getLabels(accountId, conversationId);
+    if (existing.includes(label)) {
+      console.log(`[Chatwoot] addLabel(${label}) skip — já presente em ${conversationId}.`);
+      return;
+    }
     const updated = [...new Set([...existing, label])];
-    await this.client.post(
-      `/api/v1/accounts/${accountId}/conversations/${conversationId}/labels`,
-      { labels: updated },
-    );
+    try {
+      const res = await this.client.post(
+        `/api/v1/accounts/${accountId}/conversations/${conversationId}/labels`,
+        { labels: updated },
+      );
+      const applied = (res.data?.payload as string[]) ?? [];
+      console.log(
+        `[Chatwoot] addLabel(${label}) → conv ${conversationId} | aplicadas: ${JSON.stringify(applied)}`,
+      );
+      if (!applied.includes(label)) {
+        console.warn(
+          `[Chatwoot] AVISO: label "${label}" NÃO foi aplicada pelo backend. ` +
+          `Verifique se ela está cadastrada em Settings → Labels da conta ${accountId}.`,
+        );
+      }
+    } catch (err: any) {
+      console.error(
+        `[Chatwoot] Falha ao adicionar label "${label}" na conversa ${conversationId}:`,
+        err?.response?.data || err?.message,
+      );
+    }
   }
 
   // ─── Alterar status da conversa (open / resolved / pending / snoozed) ──────

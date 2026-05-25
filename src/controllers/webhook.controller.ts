@@ -37,9 +37,14 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     if (!msg) return;
 
-    // ── 2. Ignorar conversas com etiqueta agente-off ──────────────────────
-    if (isEscalated(conv.labels ?? [])) {
-      console.log(`[Webhook] Conversa ${conv.id} tem agente-off, ignorando.`);
+    // ── 2. Ignorar conversas escaladas/encerradas ─────────────────────────
+    // Considera label `agente-off`/`resolvido` E status diferente de `open`.
+    // Atendente reabre a conversa pelo botão "Reabrir" no Chatwoot (volta para
+    // status=open) — esse é o mecanismo de "agente-on" via UI nativa.
+    if (isEscalated(conv.labels ?? [], conv.status)) {
+      console.log(
+        `[Webhook] Conversa ${conv.id} escalada/encerrada (status=${conv.status}, labels=${JSON.stringify(conv.labels ?? [])}), ignorando.`,
+      );
       return;
     }
 

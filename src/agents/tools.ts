@@ -60,24 +60,6 @@ export const TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "reagir_mensagem",
-      description:
-        "Envia uma reação de emoji à última mensagem do usuário. Use com parcimônia (ex: agradecimento final). Nunca em mensagens com conteúdo clínico.",
-      parameters: {
-        type: "object",
-        properties: {
-          emoji: {
-            type: "string",
-            description: "O emoji de reação. Ex: 👍, ❤️, 😊",
-          },
-        },
-        required: ["emoji"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "registrar_bant",
       description:
         "Persiste no Chatwoot (additional_attributes do contato) os campos do BANT que você coletou. " +
@@ -224,18 +206,6 @@ export async function executeTool(
       }
     }
 
-    case "reagir_mensagem": {
-      const emoji = args.emoji as string;
-      console.log(`[Tool] reagir_mensagem → ${emoji}`);
-      await chatwootService.sendReaction(
-        ctx.accountId,
-        ctx.conversationId,
-        ctx.messageId,
-        emoji,
-      );
-      return { output: "Reação enviada." };
-    }
-
     case "registrar_bant": {
       const bantFields: Record<string, string> = {};
       for (const key of ["need", "timeline", "authority", "budget"] as const) {
@@ -286,14 +256,14 @@ export async function executeTool(
       let resumo = (args.resumo_bant as string) || "";
       const motivo = args.motivo as string;
 
-      // Dedup: se a conversa já está como agente-off, não duplica Telegram nem label.
+      // Dedup: se a conversa já tem agente-off OU já não está open, não duplica.
       const existingLabels = await chatwootService.getLabels(
         ctx.accountId,
         ctx.conversationId,
       );
       if (existingLabels.includes("agente-off")) {
         console.log(
-          `[Tool] escalar_humano → conversa ${ctx.conversationId} já escalada, ignorando duplicação.`,
+          `[Tool] escalar_humano → conversa ${ctx.conversationId} já escalada (label), ignorando duplicação.`,
         );
         return { output: "Conversa já escalada anteriormente.", escalated: true };
       }
@@ -329,7 +299,12 @@ export async function executeTool(
         unitName: ctx.unitName,
       });
 
+      // Tag (para histórico/filtros) + mudança de status para `pending`.
+      // O status é o gating real — labels podem não aparecer na UI por bug do
+      // Chatwoot (#12792), mas `pending` é nativo e reversível pelo botão
+      // "Reabrir". Veja Fase 6.1 no plano de implementação.
       await chatwootService.addLabel(ctx.accountId, ctx.conversationId, "agente-off");
+      await chatwootService.toggleStatus(ctx.accountId, ctx.conversationId, "pending");
 
       return { output: "Humano escalado com sucesso.", escalated: true };
     }
@@ -340,7 +315,19 @@ export async function executeTool(
 }
 
 // ─── Verificar se a conversa já foi escalada ──────────────────────────────────
+//
+// Considera escalada se:
+//   - tem a label `agente-off`; OU
+//   - tem a label `resolvido`; OU
+//   - o status é diferente de `open` (pending/resolved/snoozed) — mecanismo
+//     nativo do Chatwoot, reversível pelo botão "Reabrir".
+//
+// Essa abordagem dupla protege contra o bug #12792 do Chatwoot (labels não
+// aparecem na UI), garantindo que pelo menos o status seja o ponto de
+// reabertura visível para o atendente.
 
-export function isEscalated(labels: string[]): boolean {
-  return labels.includes("agente-off");
+export function isEscalated(labels: string[], status?: string): boolean {
+  if (labels.includes("agente-off") || labels.includes("resolvido")) return true;
+  if (status && status !== "open") return true;
+  return false;
 }
