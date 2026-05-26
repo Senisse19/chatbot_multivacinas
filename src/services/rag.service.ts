@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { SupabaseClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { CohereClient } from "cohere-ai";
 import { config } from "../config";
@@ -7,14 +7,10 @@ import { getCached, setCached } from "./rag.cache";
 
 // ─── Clientes (singleton) ─────────────────────────────────────────────────────
 
-let supabase: SupabaseClient;
+import { getSupabase } from "./supabase.client";
 let openaiClient: OpenAI;
 let cohereClient: CohereClient;
 
-function getSupabase(): SupabaseClient {
-  if (!supabase) supabase = createClient(config.supabase.url, config.supabase.serviceKey);
-  return supabase;
-}
 function getOpenAI(): OpenAI {
   if (!openaiClient) openaiClient = new OpenAI({ apiKey: config.openai.apiKey });
   return openaiClient;

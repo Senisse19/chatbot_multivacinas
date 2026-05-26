@@ -8,6 +8,7 @@ import { enqueueMessage } from "../services/queue.service";
 import { runAgent, splitIntoMessages } from "../agents/agent";
 import { isEscalated } from "../agents/tools";
 import { sendEscalationAlert } from "../services/telegram.service";
+import { upsertCliente, saveMessageHistory } from "../services/database.service";
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
@@ -82,6 +83,10 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     console.log(`[Webhook] [${ctx.unit.name}] Mensagem de ${name} (${phone}): "${content.slice(0, 80)}"`);
 
+    // ── 4.5 Salvar no banco (Clientes e Histórico) ────────────────────────
+    await upsertCliente(phone, name, "whatsapp");
+    await saveMessageHistory(phone, conv.id, "user", content);
+
     // ── 5. Fila de debounce (agrupa mensagens encavaladas) ─────────────────
     const batch = await enqueueMessage(ctx);
 
@@ -126,6 +131,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         await sleep(typingDelay(part));
         await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false);
         await chatwootService.sendMessage(ctx.accountId, ctx.conversationId, part);
+        await saveMessageHistory(phone, ctx.conversationId, "assistant", part);
         await sleep(500); // pequena pausa entre partes
       }
     }
