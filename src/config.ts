@@ -26,8 +26,16 @@ const envSchema = z.object({
 
   // ── OpenAI ──────────────────────────────────────────────────────────────────
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY é obrigatório"),
-  OPENAI_MODEL: z.string().default("gpt-4.1-mini"),
+  OPENAI_MODEL: z.string().default("gpt-5.4-mini"),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  // Reasoning effort para o modelo principal. "low" combate alucinação com
+  // latência aceitável para WhatsApp. Aumente para "medium" se ainda houver
+  // erros factuais em produção. Use "none" para máxima velocidade.
+  // (O modelo gpt-5.x também aceita "xhigh", mas o SDK 4.80 ainda não inclui
+  // no tipo — adicionar quando atualizarmos o openai npm package.)
+  OPENAI_REASONING_EFFORT: z
+    .enum(["none", "low", "medium", "high"])
+    .default("low"),
 
   // ── Supabase ─────────────────────────────────────────────────────────────────
   SUPABASE_URL: z.string().url("SUPABASE_URL deve ser uma URL válida"),
@@ -76,7 +84,7 @@ const envSchema = z.object({
   MESSAGE_DEBOUNCE_MS: z.string().default("20000"),
   RAG_TOP_K: z.string().default("20"),
   RAG_TOP_N: z.string().default("5"),
-  RAG_EXPAND_MODEL: z.string().default("gpt-4.1-mini"),
+  RAG_EXPAND_MODEL: z.string().default("gpt-5.4-nano"),
   RAG_CACHE_DISABLED: z.string().default("false"),
 });
 
@@ -107,6 +115,7 @@ function loadConfig() {
       apiKey: env.OPENAI_API_KEY,
       model: env.OPENAI_MODEL,
       embeddingModel: env.OPENAI_EMBEDDING_MODEL,
+      reasoningEffort: env.OPENAI_REASONING_EFFORT,
     },
 
     supabase: {

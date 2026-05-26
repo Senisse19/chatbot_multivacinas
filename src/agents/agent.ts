@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionToolMessageParam,
+  ChatCompletionCreateParamsNonStreaming,
 } from "openai/resources/chat/completions";
 import { config } from "../config";
 import { buildSystemPrompt } from "./prompt";
@@ -110,16 +111,23 @@ export async function runAgent(
   const finalReplies: string[] = [];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    // reasoning_effort só é incluído quando != "none". Modelos não-reasoning
+    // ignoram silenciosamente, mas evitamos poluir a request quando desligado.
+    const reasoningEffort = config.openai.reasoningEffort;
+    const params: ChatCompletionCreateParamsNonStreaming = {
+      model: config.openai.model,
+      messages: conversationMessages,
+      tools: TOOLS,
+      tool_choice: "auto",
+      temperature: 0.3,
+      max_tokens: 1024,
+    };
+    if (reasoningEffort !== "none") {
+      params.reasoning_effort = reasoningEffort;
+    }
+
     const response = await withRetry(
-      () =>
-        openai.chat.completions.create({
-          model: config.openai.model,
-          messages: conversationMessages,
-          tools: TOOLS,
-          tool_choice: "auto",
-          temperature: 0.3,
-          max_tokens: 1024,
-        }),
+      () => openai.chat.completions.create(params),
       { label: "openai.chat.completions" },
     );
 

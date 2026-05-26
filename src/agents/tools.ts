@@ -106,7 +106,15 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: "escalar_humano",
       description:
-        "Transfere o atendimento para um humano. Chame esta ferramenta após enviar a mensagem de transição ao usuário. Preencha o resumo com tudo que foi coletado no BANT.",
+        "Transfere o atendimento para um humano. CHAME APENAS quando UMA destas condições for verdade: " +
+        "(1) o usuário DECLAROU intenção concreta de agendar/comprar/aplicar/cotar; " +
+        "(2) risco clínico identificado; " +
+        "(3) o usuário pediu EXPLICITAMENTE atendente/humano/pessoa; " +
+        "(4) cotação corporativa. " +
+        "NÃO chame por BASE_VAZIA ou BASE_FRACA — você deve reformular a query OU dizer 'o atendente confirma na hora' e seguir. " +
+        "NÃO chame por dúvida sobre preço/disponibilidade sem intenção declarada de fechar. " +
+        "NÃO chame por hesitação sua. " +
+        "Sempre envie a mensagem de transição ao usuário antes de chamar.",
       parameters: {
         type: "object",
         properties: {
@@ -117,20 +125,21 @@ export const TOOLS: ChatCompletionTool[] = [
           resumo_bant: {
             type: "string",
             description:
-              "Resumo do que foi coletado no BANT: necessidade, prazo, autoridade e modalidade de pagamento. Deixe vazio se o handover foi por risco clínico ou base vazia.",
+              "Resumo do que foi coletado no BANT. Opcional — se você já chamou registrar_bant, o sistema usa o BANT salvo automaticamente. Deixe vazio em risco clínico.",
           },
           motivo: {
             type: "string",
             enum: [
-              "interesse_agendamento",
-              "cotacao_corporativa",
-              "risco_clinico",
-              "base_vazia",
-              "usuario_solicitou",
-              "falha_tecnica",
-              "off_topic_persistente",
+              "interesse_agendamento",      // usuário declarou que quer agendar/comprar/aplicar
+              "cotacao_corporativa",         // empresa, CNPJ, grupo
+              "risco_clinico",               // condição clínica + dúvida sobre vacina
+              "usuario_solicitou",           // usuário pediu atendente/humano/pessoa
+              "informacao_nao_disponivel",   // base vazia E usuário insistiu em querer essa resposta agora
+              "falha_tecnica",               // erro reiterado em ferramenta
+              "off_topic_persistente",       // off-topic após advertência
             ],
-            description: "Motivo do handover para o log.",
+            description:
+              "Motivo do handover. Use 'informacao_nao_disponivel' APENAS quando a base estiver vazia E o usuário tiver insistido em querer a resposta agora — não use por BASE_VAZIA isolado.",
           },
         },
         required: ["nome", "motivo"],

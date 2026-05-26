@@ -4,7 +4,7 @@ Serviço Node.js/TypeScript que substitui o fluxo n8n da MultiVacinas. A assiste
 
 ## Stack
 - **Express** — servidor webhook
-- **OpenAI** (`gpt-4.1-mini` + Whisper + embeddings) — agente + transcrição
+- **OpenAI** — agente principal `gpt-5.4-mini` (reasoning tokens, anti-alucinação) + `gpt-5.4-nano` para query expansion + Whisper para transcrição + embeddings
 - **Supabase** — base vetorial (pgvector) + Postgres FTS (busca híbrida) + observabilidade
 - **Cohere** — reranker multilingual
 - **Chatwoot** — CRM / envio de mensagens / persistência de BANT (additional_attributes)
@@ -95,7 +95,8 @@ Eventos: message_created
 |---|---|
 | `PORT` | Porta do servidor (padrão: 3000) |
 | `OPENAI_API_KEY` | Chave da API OpenAI |
-| `OPENAI_MODEL` | Modelo de chat (padrão: gpt-4.1-mini) |
+| `OPENAI_MODEL` | Modelo principal do agente (padrão: `gpt-5.4-mini`). Família GPT-5 traz reasoning tokens, que combatem alucinação. |
+| `OPENAI_REASONING_EFFORT` | Nível de raciocínio: `none` / `low` / `medium` / `high` (padrão: `low`). `low` é o melhor equilíbrio latência × precisão para WhatsApp. Aumente se ainda houver erros factuais. |
 | `OPENAI_EMBEDDING_MODEL` | Modelo de embedding (padrão: text-embedding-3-small) |
 | `SUPABASE_URL` | URL do projeto Supabase |
 | `SUPABASE_SERVICE_KEY` | Chave de serviço do Supabase |
@@ -107,7 +108,7 @@ Eventos: message_created
 | `MESSAGE_DEBOUNCE_MS` | Janela de debounce em ms (padrão: 20000) |
 | `RAG_TOP_K` | Documentos retornados pela busca antes do reranker (padrão: 20) |
 | `RAG_TOP_N` | Documentos após reranker (padrão: 5) |
-| `RAG_EXPAND_MODEL` | Modelo usado na query expansion (padrão: gpt-4.1-mini) |
+| `RAG_EXPAND_MODEL` | Modelo usado na query expansion (padrão: `gpt-5.4-nano` — tarefa simples, ~75% mais barato que mini) |
 | `RAG_CACHE_DISABLED` | `true` para desligar o cache em memória do RAG |
 
 ## Migrations no Supabase (referência rápida)
