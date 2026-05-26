@@ -35,6 +35,9 @@ const envSchema = z.object({
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high"])
     .default("low"),
+  // Modelo barato/rápido usado só pelo splitter de mensagens (LLM divisor).
+  // Precisa suportar response_format: json_object.
+  OPENAI_SPLITTER_MODEL: z.string().default("gpt-4o-mini"),
 
   // ── Supabase ─────────────────────────────────────────────────────────────────
   SUPABASE_URL: z.string().url("SUPABASE_URL deve ser uma URL válida"),
@@ -115,6 +118,7 @@ function loadConfig() {
       model: env.OPENAI_MODEL,
       embeddingModel: env.OPENAI_EMBEDDING_MODEL,
       reasoningEffort: env.OPENAI_REASONING_EFFORT,
+      splitterModel: env.OPENAI_SPLITTER_MODEL,
     },
 
     supabase: {

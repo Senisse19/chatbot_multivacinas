@@ -104,7 +104,13 @@ export async function runAgent(
 ): Promise<{ replies: string[]; escalated: boolean }> {
   // Usamos o contexto da última mensagem como principal
   const ctx = messages[messages.length - 1];
-  const combinedContent = messages.map((m) => m.content).filter(Boolean).join("\n");
+  const validContents = messages.map((m) => m.content).filter(Boolean);
+  // Quando o usuário mandou 2+ mensagens em sequência, numeramos para que o
+  // LLM perceba claramente que são perguntas distintas e cubra todas.
+  const combinedContent =
+    validContents.length > 1
+      ? validContents.map((c, i) => `[Mensagem ${i + 1}] ${c}`).join("\n")
+      : validContents.join("\n");
 
   // ─── Histórico + BANT persistido (em paralelo) ────────────────────────────
   const [history, contactAttrs] = await Promise.all([
@@ -259,11 +265,99 @@ export async function runAgent(
   return { replies: finalReplies, escalated };
 }
 
+// ─── Splitter LLM (estilo n8n "Agente divisor de mensagens") ──────────────────
+//
+// Recebe a resposta da Ana e devolve 1 ou 2 partes naturais, simulando
+// digitação humana no WhatsApp. Mensagens curtas (≤120 chars) pulam o LLM
+// para economizar latência/custo. Em caso de falha do LLM, cai no splitter
+// regex (splitIntoMessages) abaixo.
+
+function buildSplitterPrompt(maxParts: number): string {
+  return `## PAPEL
+Você divide uma mensagem da assistente Ana em 1 a ${maxParts} parte(s), simulando o envio natural de WhatsApp. Não reescreva nem traduza — só separe.
+
+## REGRAS
+- Devolva 1 parte se a mensagem for curta, direta ou tiver uma única ideia.
+- Devolva mais de 1 parte apenas quando houver ideias bem distintas (ex.: afirmação + pergunta, contexto + lista, respostas a perguntas separadas do usuário).
+- NUNCA devolva mais de ${maxParts} parte(s).
+- NUNCA quebre listas, enumerações ou itens com "-", "•", "1.", "2." em mensagens diferentes — mantenha juntos.
+- NUNCA corte uma frase no meio.
+- NUNCA altere palavras, pontuação ou formatação (negrito, *itálico*).
+- Não invente conteúdo novo. Não adicione saudações ou despedidas.
+- Se a mensagem tem apenas uma frase, devolva como 1 parte só.
+
+## FORMATO DE SAÍDA
+Responda APENAS com JSON neste formato exato:
+{"mensagens": ["parte 1"]}
+ou
+{"mensagens": ["parte 1", "parte 2", ...]}
+
+## EXEMPLOS
+Entrada: "Boa tarde! Tudo bem? Como posso ajudar?"
+Saída: {"mensagens": ["Boa tarde! Tudo bem? Como posso ajudar?"]}
+
+Entrada: "A gente trabalha com vacinas de gripe, HPV, meningite, pneumocócicas, herpes-zóster, hepatites, febre amarela, dengue, VSR e várias outras. Você procura alguma vacina específica ou é para alguém em uma fase/necessidade, como bebê, gestante, idoso ou viagem?"
+Saída: {"mensagens": ["A gente trabalha com vacinas de gripe, HPV, meningite, pneumocócicas, herpes-zóster, hepatites, febre amarela, dengue, VSR e várias outras.", "Você procura alguma vacina específica ou é para alguém em uma fase/necessidade, como bebê, gestante, idoso ou viagem?"]}`;
+}
+
+export async function splitWithLLM(
+  text: string,
+  maxParts: number = 2,
+): Promise<string[]> {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // Mensagens curtas não vão pro splitter — economia de latência/custo.
+  // Se maxParts>2 (batch do usuário com várias perguntas), passamos mesmo
+  // assim, porque a resposta provavelmente concatena múltiplos blocos.
+  if (trimmed.length <= 120 && maxParts <= 2) return [trimmed];
+
+  const cap = Math.max(1, maxParts);
+
+  try {
+    const response = await withRetry(
+      () =>
+        openai.chat.completions.create({
+          model: config.openai.splitterModel,
+          messages: [
+            { role: "system", content: buildSplitterPrompt(cap) },
+            { role: "user", content: trimmed },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_completion_tokens: 800,
+        }),
+      { label: "openai.splitter" },
+    );
+
+    const raw = response.choices[0]?.message?.content ?? "";
+    const parsed = JSON.parse(raw) as { mensagens?: unknown };
+    const parts = Array.isArray(parsed.mensagens)
+      ? parsed.mensagens
+          .filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+          .map((p) => p.trim())
+      : [];
+
+    if (parts.length === 0) {
+      console.warn("[Splitter] LLM devolveu array vazio, usando fallback regex");
+      return splitIntoMessages(trimmed);
+    }
+    // Hard cap (se o LLM ignorar a regra).
+    return parts.slice(0, cap);
+  } catch (err) {
+    console.error("[Splitter] Falha no LLM splitter, usando fallback regex:", err);
+    return splitIntoMessages(trimmed);
+  }
+}
+
 // ─── Divisão inteligente de mensagens longas ──────────────────────────────────
 //
 // O agente retorna um único bloco de texto. Dividimos em partes naturais
 // para simular o estilo de digitação humana do WhatsApp.
 // Replicamos o comportamento do nó "Split-Mensagens" do n8n.
+// Fallback usado quando o splitWithLLM acima falha.
 
 export async function splitIntoMessages(text: string): Promise<string[]> {
   if (!text || text.trim() === "") return [];

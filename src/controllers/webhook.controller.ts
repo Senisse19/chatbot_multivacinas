@@ -5,7 +5,7 @@ import { getUnitByInboxId } from "../config/units";
 import { ChatwootWebhookPayload, MessageContext } from "../types/chatwoot.types";
 import { chatwootService } from "../services/chatwoot.service";
 import { enqueueMessage } from "../services/queue.service";
-import { runAgent, splitIntoMessages } from "../agents/agent";
+import { runAgent, splitWithLLM } from "../agents/agent";
 import { isEscalated } from "../agents/tools";
 import { sendEscalationAlert } from "../services/telegram.service";
 import { upsertCliente, saveMessageHistory } from "../services/database.service";
@@ -51,7 +51,8 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     // ── 3. Extrair telefone e conteúdo ────────────────────────────────────
     const phone = msg.sender?.phone_number ?? payload.sender?.phone_number ?? "";
-    const name = msg.sender?.name ?? payload.sender?.name ?? "";
+    const fullName = msg.sender?.name ?? payload.sender?.name ?? "";
+    const name = fullName.trim().split(/\s+/)[0] ?? "";
     const isAudio = payload.attachments?.[0]?.meta?.is_recorded_audio === true;
 
     let content: string = msg.content ?? "";
@@ -124,8 +125,11 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
     }
 
     // ── 7. Enviar respostas com delay entre mensagens ──────────────────────
+    // Se o usuário mandou várias mensagens em sequência, autorizamos o splitter
+    // a devolver mais partes (uma por bloco lógico da resposta).
+    const maxParts = Math.max(2, batch.length);
     for (const reply of replies) {
-      const parts = await splitIntoMessages(reply);
+      const parts = await splitWithLLM(reply, maxParts);
       for (const part of parts) {
         await chatwootService.setTyping(ctx.accountId, ctx.conversationId, true);
         await sleep(typingDelay(part));
