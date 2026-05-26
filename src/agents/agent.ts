@@ -125,7 +125,29 @@ export async function runAgent(
   // (history vem do Chatwoot já filtrado por role="user"|"assistant")
   const firstContact = !history.some((h) => h.role === "assistant");
 
-  if (firstContact && isGreetingOnly(combinedContent)) {
+  const batchContents = new Set(
+    messages.map((m) => m.content).filter((c) => c && c.trim().length > 0),
+  );
+  const cleanHistory = history.filter(
+    (h) => !(h.role === "user" && batchContents.has(h.content)),
+  );
+
+  if (cleanHistory.length !== history.length - messages.length) {
+    console.warn(
+      `[Agent] Limpeza de histórico inesperada: history=${history.length}, batch=${messages.length}, clean=${cleanHistory.length}`,
+    );
+  }
+
+  const hasMeaningfulPriorUserMessage = cleanHistory.some(
+    (h) => h.role === "user" && !isGreetingOnly(h.content),
+  );
+  const shouldUseInstitutionalGreeting =
+    isGreetingOnly(combinedContent) && (firstContact || !hasMeaningfulPriorUserMessage);
+
+  if (shouldUseInstitutionalGreeting) {
+    console.log(
+      `[Agent] Saudação institucional direta: firstContact=${firstContact}, meaningfulPriorUser=${hasMeaningfulPriorUserMessage}`,
+    );
     return {
       replies: [buildInstitutionalGreeting(ctx.name)],
       escalated: false,
@@ -141,24 +163,6 @@ export async function runAgent(
     isAudio: messages.some((m) => m.isAudio),
     savedBant,
   });
-
-  // ─── Limpeza do histórico ─────────────────────────────────────────────────
-  // O Chatwoot já guardou todas as mensagens do batch. Se mantivermos todas e
-  // ainda assim adicionarmos `combinedContent`, mensagens do batch aparecem
-  // duplicadas no contexto. Removemos do histórico qualquer mensagem do
-  // usuário cujo conteúdo coincida com algum item do batch atual.
-  const batchContents = new Set(
-    messages.map((m) => m.content).filter((c) => c && c.trim().length > 0),
-  );
-  const cleanHistory = history.filter(
-    (h) => !(h.role === "user" && batchContents.has(h.content)),
-  );
-
-  if (cleanHistory.length !== history.length - messages.length) {
-    console.warn(
-      `[Agent] Limpeza de histórico inesperada: history=${history.length}, batch=${messages.length}, clean=${cleanHistory.length}`,
-    );
-  }
 
   // ─── Construção do array de mensagens ─────────────────────────────────────
   const conversationMessages: ChatCompletionMessageParam[] = [
