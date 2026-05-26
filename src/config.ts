@@ -28,11 +28,10 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY é obrigatório"),
   OPENAI_MODEL: z.string().default("gpt-5.4-mini"),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
-  // Reasoning effort para o modelo principal. "low" combate alucinação com
-  // latência aceitável para WhatsApp. Aumente para "medium" se ainda houver
-  // erros factuais em produção. Use "none" para máxima velocidade.
-  // (O modelo gpt-5.x também aceita "xhigh", mas o SDK 4.80 ainda não inclui
-  // no tipo — adicionar quando atualizarmos o openai npm package.)
+  // Reasoning effort for Chat Completions models that accept the top-level
+  // reasoning_effort field. gpt-5.4-mini currently rejects it in this route,
+  // so agent.ts only sends this value for a narrow allowlist of o-series models.
+  // Use "none" to disable sending the field entirely.
   OPENAI_REASONING_EFFORT: z
     .enum(["none", "low", "medium", "high"])
     .default("low"),

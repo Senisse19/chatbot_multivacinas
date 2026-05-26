@@ -17,6 +17,13 @@ const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
 const MAX_TOOL_ITERATIONS = 10; // segurança contra loop infinito
 
+function supportsChatCompletionsReasoningEffort(model: string): boolean {
+  // This app currently uses Chat Completions. In this endpoint, gpt-5.4-mini
+  // has returned 400 "Unrecognized request argument supplied: reasoning_effort".
+  // Keep this allowlist narrow to avoid breaking production on model changes.
+  return model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4");
+}
+
 // ─── Agent Loop ───────────────────────────────────────────────────────────────
 
 /**
@@ -111,8 +118,8 @@ export async function runAgent(
   const finalReplies: string[] = [];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    // reasoning_effort só é incluído quando != "none". Modelos não-reasoning
-    // ignoram silenciosamente, mas evitamos poluir a request quando desligado.
+    // reasoning_effort is only sent to Chat Completions models known to accept it.
+    // gpt-5.4-mini rejects this top-level field in the current production route.
     const reasoningEffort = config.openai.reasoningEffort;
     const params: ChatCompletionCreateParamsNonStreaming = {
       model: config.openai.model,
@@ -122,8 +129,10 @@ export async function runAgent(
       temperature: 0.3,
       max_tokens: 1024,
     };
-    const isReasoningModel = config.openai.model.startsWith("o1") || config.openai.model.startsWith("o3");
-    if (reasoningEffort !== "none" && isReasoningModel) {
+    if (
+      reasoningEffort !== "none" &&
+      supportsChatCompletionsReasoningEffort(config.openai.model)
+    ) {
       params.reasoning_effort = reasoningEffort;
     }
 
