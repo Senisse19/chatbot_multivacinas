@@ -97,7 +97,7 @@ export async function runAgent(
         content: m.content,
       }),
     ),
-    // Mensagem(ns) atual(is) — pode ser uma ou várias agrupadas
+    // Mensagem(ns) atual(is), pode ser uma ou várias agrupadas
     { role: "user", content: combinedContent },
   ];
 
@@ -127,7 +127,7 @@ export async function runAgent(
       tools: TOOLS,
       tool_choice: "auto",
       temperature: 0.3,
-      max_tokens: 1024,
+      max_completion_tokens: 1024,
     };
     if (
       reasoningEffort !== "none" &&

@@ -15,9 +15,9 @@ export const TOOLS: ChatCompletionTool[] = [
         "Consulta a base de conhecimento interna da MultiVacinas (bulas, calendários, protocolos e informações de serviços). " +
         "OBRIGATÓRIA antes de qualquer afirmação factual sobre vacinas, preços, disponibilidade ou procedimentos. " +
         "REGRAS DE USO: (1) A resposta vem com um de três status. BASE_ENCONTRADA: copie o texto sem alterar. " +
-        "BASE_FRACA: a evidência é correlata mas não conclusiva — use com cautela, ofereça transferir para atendente. " +
-        "BASE_VAZIA: NÃO invente, escale para humano. " +
-        "(2) Use queries técnicas e específicas — não queries conversacionais. " +
+        "BASE_FRACA: a evidência é correlata mas não conclusiva. Use com cautela e não invente. " +
+        "BASE_VAZIA: NÃO invente. Reformule a busca antes de desistir. " +
+        "(2) Use queries técnicas e específicas. Não use queries conversacionais. " +
         "(3) Se já souber faixa etária ou tipo do conteúdo, passe os filtros para reduzir ruído. " +
         "(4) Se a primeira busca vier incompleta, chame novamente com query diferente antes de desistir.",
       parameters: {
@@ -63,7 +63,7 @@ export const TOOLS: ChatCompletionTool[] = [
       name: "registrar_bant",
       description:
         "Persiste no Chatwoot (additional_attributes do contato) os campos do BANT que você coletou. " +
-        "Chame conforme a coleta progride. Envie APENAS os campos efetivamente coletados — não invente. " +
+        "Chame conforme a coleta progride. Envie APENAS os campos efetivamente coletados. Não invente. " +
         "Use rótulos curtos e diretos.",
       parameters: {
         type: "object",
@@ -111,7 +111,7 @@ export const TOOLS: ChatCompletionTool[] = [
         "(2) risco clínico identificado; " +
         "(3) o usuário pediu EXPLICITAMENTE atendente/humano/pessoa; " +
         "(4) cotação corporativa. " +
-        "NÃO chame por BASE_VAZIA ou BASE_FRACA — você deve reformular a query OU dizer 'o atendente confirma na hora' e seguir. " +
+        "NÃO chame por BASE_VAZIA ou BASE_FRACA. Você deve reformular a query OU dizer 'o atendente confirma na hora' e seguir. " +
         "NÃO chame por dúvida sobre preço/disponibilidade sem intenção declarada de fechar. " +
         "NÃO chame por hesitação sua. " +
         "Sempre envie a mensagem de transição ao usuário antes de chamar.",
@@ -125,7 +125,7 @@ export const TOOLS: ChatCompletionTool[] = [
           resumo_bant: {
             type: "string",
             description:
-              "Resumo do que foi coletado no BANT. Opcional — se você já chamou registrar_bant, o sistema usa o BANT salvo automaticamente. Deixe vazio em risco clínico.",
+              "Resumo do que foi coletado no BANT. Opcional. Se você já chamou registrar_bant, o sistema usa o BANT salvo automaticamente. Deixe vazio em risco clínico.",
           },
           motivo: {
             type: "string",
@@ -139,7 +139,7 @@ export const TOOLS: ChatCompletionTool[] = [
               "off_topic_persistente",       // off-topic após advertência
             ],
             description:
-              "Motivo do handover. Use 'informacao_nao_disponivel' APENAS quando a base estiver vazia E o usuário tiver insistido em querer a resposta agora — não use por BASE_VAZIA isolado.",
+              "Motivo do handover. Use 'informacao_nao_disponivel' APENAS quando a base estiver vazia E o usuário tiver insistido em querer a resposta agora. Não use por BASE_VAZIA isolado.",
           },
         },
         required: ["nome", "motivo"],
@@ -201,7 +201,7 @@ export async function executeTool(
           return {
             output:
               `BASE_FRACA (score=${result.topScore.toFixed(2)}): existe conteúdo correlato mas NÃO conclusivo. ` +
-              "Você pode mencionar o que está claro no trecho, mas DEVE oferecer transferir para atendente humano para confirmação. " +
+              "Você pode mencionar o que está claro no trecho, mas deve seguir a conversa sem transferir só por isso. " +
               "NÃO afirme nada que não esteja literalmente no texto:\n\n" +
               result.content,
           };
@@ -210,7 +210,7 @@ export async function executeTool(
           return {
             output:
               `BASE_VAZIA: A consulta "${query}" não retornou conteúdo relevante (topScore=${result.topScore.toFixed(2)}). ` +
-              "NÃO afirme nada sobre este tema. Se o usuário precisar desta informação, escale para humano com motivo=base_vazia.",
+              "NÃO afirme nada sobre este tema. Reformule a busca uma vez. Se ainda falhar, diga que o atendente confirma na hora do agendamento. Só escale se o usuário insistir em falar com alguém agora, usando motivo=informacao_nao_disponivel.",
           };
       }
     }
@@ -224,7 +224,7 @@ export async function executeTool(
         }
       }
       if (Object.keys(bantFields).length === 0) {
-        return { output: "Nenhum campo BANT fornecido — nada a persistir." };
+        return { output: "Nenhum campo BANT fornecido. Nada a persistir." };
       }
 
       if (!ctx.contactId) {
@@ -309,7 +309,7 @@ export async function executeTool(
       });
 
       // Tag (para histórico/filtros) + mudança de status para `pending`.
-      // O status é o gating real — labels podem não aparecer na UI por bug do
+      // O status é o gating real. Labels podem não aparecer na UI por bug do
       // Chatwoot (#12792), mas `pending` é nativo e reversível pelo botão
       // "Reabrir". Veja Fase 6.1 no plano de implementação.
       await chatwootService.addLabel(ctx.accountId, ctx.conversationId, "agente-off");
@@ -328,7 +328,7 @@ export async function executeTool(
 // Considera escalada se:
 //   - tem a label `agente-off`; OU
 //   - tem a label `resolvido`; OU
-//   - o status é diferente de `open` (pending/resolved/snoozed) — mecanismo
+//   - o status é diferente de `open` (pending/resolved/snoozed), mecanismo
 //     nativo do Chatwoot, reversível pelo botão "Reabrir".
 //
 // Essa abordagem dupla protege contra o bug #12792 do Chatwoot (labels não

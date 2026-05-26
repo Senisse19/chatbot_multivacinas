@@ -31,16 +31,16 @@ interface DocumentRow {
 
 // ─── RAG Pipeline ─────────────────────────────────────────────────────────────
 //
-// ESTRATÉGIA ANTI-ALUCINAÇÃO (Fase 3 — atualizada):
+// ESTRATÉGIA ANTI-ALUCINAÇÃO (Fase 3, atualizada):
 //
 // 1. Query expansion: geramos 3 variações técnicas da pergunta do usuário.
-// 2. Busca HÍBRIDA (FTS portuguese + pgvector com RRF) — pega tanto termos
+// 2. Busca HÍBRIDA (FTS portuguese + pgvector com RRF), pega tanto termos
 //    raros como "Beyfortus" quanto perguntas semânticas. RPC: match_documents_hybrid.
 // 3. Merge + dedup por id (UUID).
 // 4. Rerank Cohere com a query TÉCNICA (queries[1]) em vez da conversacional.
 // 5. Status em 3 camadas:
 //      - STRONG (>= 0.35) → BASE_ENCONTRADA
-//      - WEAK   (0.20–0.35) → BASE_FRACA (usa com cautela, oferece humano)
+//      - WEAK   (0.20 a 0.35) → BASE_FRACA (usa com cautela, sem inventar)
 //      - EMPTY  (< 0.20)  → BASE_VAZIA
 //    Evita o "tudo ou nada" do threshold único.
 
@@ -63,7 +63,7 @@ export interface RagFilters {
 // ─── 1. Query Expansion ───────────────────────────────────────────────────────
 
 /**
- * Gera 2–3 variações da query original para melhorar o recall da busca vetorial.
+ * Gera 2 a 3 variações da query original para melhorar o recall da busca vetorial.
  * Ex: "pode dar gripe pra grávida?" → ["vacina influenza gestante", "gripe grávida segurança", ...]
  */
 async function expandQuery(originalQuery: string): Promise<string[]> {
@@ -73,7 +73,7 @@ async function expandQuery(originalQuery: string): Promise<string[]> {
         getOpenAI().chat.completions.create({
           model: config.agent.ragExpandModel,
           temperature: 0,
-          max_tokens: 200,
+          max_completion_tokens: 200,
           response_format: { type: "json_object" },
           messages: [
             {
@@ -269,7 +269,7 @@ export async function searchDocuments(
 
     console.log(`[RAG] ${allDocs.length} docs únicos para reranking.`);
 
-    // Passo 4: rerank com a query TÉCNICA (primeira variação) — costuma render
+    // Passo 4: rerank com a query TÉCNICA (primeira variação), costuma render
     // melhor que a query conversacional original em corpus de bula. Se não
     // houve expansão, cai na original.
     const rerankQuery = queries[1] ?? originalQuery;
@@ -330,7 +330,7 @@ export async function searchDocuments(
     const result: RagResult = { status, content, topScore, queriesUsed: queries };
 
     // Cacheia apenas resultados úteis (strong/weak). Empty é descartado pelo
-    // próprio setCached — base pode mudar e queremos retentar.
+    // próprio setCached. A base pode mudar e queremos retentar.
     if (!config.agent.ragCacheDisabled) {
       setCached(originalQuery, filter, result);
     }

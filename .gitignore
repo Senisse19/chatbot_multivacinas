@@ -4,6 +4,8 @@ dist/
 .env.local
 .env.*
 
-migrations/
+migrations/*
+!migrations/
+!migrations/*.sql
 materialApoio/
 .claude/

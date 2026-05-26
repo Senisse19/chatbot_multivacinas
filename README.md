@@ -36,7 +36,8 @@ src/
 migrations/
 ├── 001_match_documents_filter.sql  # Filtro de metadados no RPC vetorial
 ├── 002_hybrid_search.sql           # Coluna FTS + função match_documents_hybrid
-└── 003_rag_logs.sql                # Tabela de observabilidade
+├── 003_rag_logs.sql                # Tabela de observabilidade
+└── 004_fix_hybrid_score_type.sql   # Correção do tipo score no RPC híbrido
 
 eval/
 ├── questions.json              # 25 perguntas de baseline para o RAG
@@ -54,6 +55,7 @@ eval/
    - `migrations/001_match_documents_filter.sql`
    - `migrations/002_hybrid_search.sql`
    - `migrations/003_rag_logs.sql`
+   - `migrations/004_fix_hybrid_score_type.sql`
 
 > **Embedding size:** as migrations assumem `vector(1536)` (text-embedding-3-small). Se usar `text-embedding-3-large`, troque para `vector(3072)`.
 
