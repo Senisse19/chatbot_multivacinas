@@ -168,11 +168,23 @@ class ChatwootService {
       )
       .catch(() => ({ data: { payload: [] } }));
 
-    const messages: Array<{ message_type: number; content: string | null }> =
-      res.data?.payload ?? [];
+    const messages: Array<{
+      message_type: number;
+      content: string | null;
+      private?: boolean;
+    }> = res.data?.payload ?? [];
 
+    // Considera apenas conversa real: incoming (0) do usuário e outgoing (1) público.
+    // Exclui activity (2), template (3) e notas privadas — eles inflavam o histórico
+    // e faziam firstContact virar false mesmo sem a Ana ter falado.
     return messages
-      .filter((m) => m.content && m.content.trim() !== "")
+      .filter(
+        (m) =>
+          m.content &&
+          m.content.trim() !== "" &&
+          (m.message_type === 0 || m.message_type === 1) &&
+          !m.private,
+      )
       .slice(-limit)
       .map((m) => ({
         role: m.message_type === 0 ? "user" : "assistant",
