@@ -5,7 +5,7 @@ import type {
   ChatCompletionCreateParamsNonStreaming,
 } from "openai/resources/chat/completions";
 import { config } from "../config";
-import { buildSystemPrompt } from "./prompt";
+import { PUBLIC_BRAND_NAME, buildSystemPrompt } from "./prompt";
 import { TOOLS, executeTool, ToolContext } from "./tools";
 import { MessageContext } from "../types/chatwoot.types";
 import { chatwootService } from "../services/chatwoot.service";
@@ -22,6 +22,72 @@ function supportsChatCompletionsReasoningEffort(model: string): boolean {
   // has returned 400 "Unrecognized request argument supplied: reasoning_effort".
   // Keep this allowlist narrow to avoid breaking production on model changes.
   return model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4");
+}
+
+function getCurrentGreeting(now = new Date()): string {
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo",
+  });
+  const hourPart = formatter
+    .formatToParts(now)
+    .find((part) => part.type === "hour")?.value;
+  const hour = Number(hourPart ?? formatter.format(now));
+
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function normalizeGreetingText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isGreetingOnly(text: string): boolean {
+  const normalized = normalizeGreetingText(text);
+  if (!normalized || normalized.length > 120) return false;
+  if (/(vacina|agendar|marcar|consulta|preco|valor|dose|hpv|gripe|covid|febre|meningite|dengue|exame|procedimento)/.test(normalized)) {
+    return false;
+  }
+
+  const allowedTokens = new Set([
+    "bom",
+    "boa",
+    "dia",
+    "tarde",
+    "noite",
+    "oi",
+    "ola",
+    "opa",
+    "eai",
+    "salve",
+    "familia",
+    "tudo",
+    "td",
+    "bem",
+    "blz",
+    "beleza",
+    "como",
+    "estamos",
+    "vai",
+    "indo",
+  ]);
+
+  return normalized.split(" ").every((token) => allowedTokens.has(token));
+}
+
+function buildInstitutionalGreeting(name: string): string {
+  const greeting = getCurrentGreeting();
+  const namePart = name ? `, ${name}` : "";
+
+  return `${greeting}${namePart}! Sou a Ana, da ${PUBLIC_BRAND_NAME}. Estou por aqui para te ajudar. O que você precisa hoje?`;
 }
 
 // ─── Agent Loop ───────────────────────────────────────────────────────────────
@@ -58,6 +124,13 @@ export async function runAgent(
   // firstContact: nenhuma mensagem da Ana ainda → primeira interação real.
   // (history vem do Chatwoot já filtrado por role="user"|"assistant")
   const firstContact = !history.some((h) => h.role === "assistant");
+
+  if (firstContact && isGreetingOnly(combinedContent)) {
+    return {
+      replies: [buildInstitutionalGreeting(ctx.name)],
+      escalated: false,
+    };
+  }
 
   const systemPrompt = buildSystemPrompt({
     name: ctx.name,
