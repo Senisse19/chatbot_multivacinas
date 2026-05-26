@@ -122,7 +122,8 @@ export async function runAgent(
       temperature: 0.3,
       max_tokens: 1024,
     };
-    if (reasoningEffort !== "none") {
+    const isReasoningModel = config.openai.model.startsWith("o1") || config.openai.model.startsWith("o3");
+    if (reasoningEffort !== "none" && isReasoningModel) {
       params.reasoning_effort = reasoningEffort;
     }
 
