@@ -169,6 +169,27 @@
   },
   {
     "id": "Q25",
+    "query": "Gostaria de saber contraindicações da infanrix-penta",
+    "expected_status": "strong",
+    "expected_docs_contain": ["Infanrix", "contra"],
+    "filtros": {}
+  },
+  {
+    "id": "Q26",
+    "query": "vacina para tétano",
+    "expected_status": "strong",
+    "expected_docs_contain": ["tétano"],
+    "filtros": {}
+  },
+  {
+    "id": "Q27",
+    "query": "vocês têm vacina de tétano?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["tétano"],
+    "filtros": {}
+  },
+  {
+    "id": "Q28",
     "query": "eu queria saber sobre uma coisa lá",
     "expected_status": "empty",
     "expected_docs_contain": [],

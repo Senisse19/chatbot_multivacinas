@@ -111,7 +111,7 @@ export const TOOLS: ChatCompletionTool[] = [
         "(2) risco clínico identificado; " +
         "(3) o usuário pediu EXPLICITAMENTE atendente/humano/pessoa; " +
         "(4) cotação corporativa. " +
-        "NÃO chame por BASE_VAZIA ou BASE_FRACA. Você deve reformular a query OU dizer 'o atendente confirma na hora' e seguir. " +
+        "NÃO chame por BASE_VAZIA ou BASE_FRACA. Você deve reformular a query e, se continuar sem base, responder o geral disponível sem transferir. " +
         "NÃO chame por dúvida sobre preço/disponibilidade sem intenção declarada de fechar. " +
         "NÃO chame por hesitação sua. " +
         "Sempre envie a mensagem de transição ao usuário antes de chamar.",
@@ -134,12 +134,11 @@ export const TOOLS: ChatCompletionTool[] = [
               "cotacao_corporativa",         // empresa, CNPJ, grupo
               "risco_clinico",               // condição clínica + dúvida sobre vacina
               "usuario_solicitou",           // usuário pediu atendente/humano/pessoa
-              "informacao_nao_disponivel",   // base vazia E usuário insistiu em querer essa resposta agora
               "falha_tecnica",               // erro reiterado em ferramenta
               "off_topic_persistente",       // off-topic após advertência
             ],
             description:
-              "Motivo do handover. Use 'informacao_nao_disponivel' APENAS quando a base estiver vazia E o usuário tiver insistido em querer a resposta agora. Não use por BASE_VAZIA isolado.",
+              "Motivo do handover. Falta de informação na base não é motivo de handover; use usuario_solicitou apenas quando o usuário pedir uma pessoa/atendente.",
           },
         },
         required: ["nome", "motivo"],
@@ -210,7 +209,9 @@ export async function executeTool(
           return {
             output:
               `BASE_VAZIA: A consulta "${query}" não retornou conteúdo relevante (topScore=${result.topScore.toFixed(2)}). ` +
-              "NÃO afirme nada sobre este tema. Reformule a busca uma vez. Se ainda falhar, diga que o atendente confirma na hora do agendamento. Só escale se o usuário insistir em falar com alguém agora, usando motivo=informacao_nao_disponivel.",
+              "NÃO afirme detalhe técnico sem base. Reformule a busca uma vez com nome comercial, doença, componente e termos de bula. " +
+              "Se ainda falhar e a vacina estiver no catálogo, confirme apenas a oferta/tema geral disponível e diga que não consegue confirmar esse detalhe com segurança por aqui. " +
+              "Não transfira por falta de base; só escale se o usuário pedir explicitamente uma pessoa agora, usando motivo=usuario_solicitou.",
           };
       }
     }

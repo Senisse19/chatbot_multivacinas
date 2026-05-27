@@ -37,10 +37,11 @@ migrations/
 ├── 001_match_documents_filter.sql  # Filtro de metadados no RPC vetorial
 ├── 002_hybrid_search.sql           # Coluna FTS + função match_documents_hybrid
 ├── 003_rag_logs.sql                # Tabela de observabilidade
-└── 004_fix_hybrid_score_type.sql   # Correção do tipo score no RPC híbrido
+├── 004_fix_hybrid_score_type.sql   # Correção do tipo score no RPC híbrido
+└── 005_fix_document_id_types.sql   # Alinha RPC/logs ao tipo de documents.id
 
 eval/
-├── questions.json              # 25 perguntas de baseline para o RAG
+├── questions.json              # 28 perguntas de baseline para o RAG
 └── run.ts                      # Runner do eval set (npm run eval:rag)
 ```
 
@@ -56,6 +57,7 @@ eval/
    - `migrations/002_hybrid_search.sql`
    - `migrations/003_rag_logs.sql`
    - `migrations/004_fix_hybrid_score_type.sql`
+   - `migrations/005_fix_document_id_types.sql`
 
 > **Embedding size:** as migrations assumem `vector(1536)` (text-embedding-3-small). Se usar `text-embedding-3-large`, troque para `vector(3072)`.
 
@@ -75,7 +77,7 @@ npm run build && npm start
 npm run eval:rag
 ```
 
-Roda as 25 perguntas baseline contra o pipeline real (com cache desligado) e imprime uma tabela markdown com:
+Roda as 28 perguntas baseline contra o pipeline real (com cache desligado) e imprime uma tabela markdown com:
 - hit rate por status (`strong`/`weak`/`empty`)
 - conteúdo esperado vs. retornado (substrings case-insensitive sem acento)
 - latência média e p95

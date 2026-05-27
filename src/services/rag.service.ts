@@ -23,7 +23,7 @@ function getCohere(): CohereClient {
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
 interface DocumentRow {
-  id: string;
+  id: string | number;
   content: string;
   metadata: Record<string, unknown>;
   similarity?: number;
@@ -36,7 +36,7 @@ interface DocumentRow {
 // 1. Query expansion: geramos 3 variações técnicas da pergunta do usuário.
 // 2. Busca HÍBRIDA (FTS portuguese + pgvector com RRF), pega tanto termos
 //    raros como "Beyfortus" quanto perguntas semânticas. RPC: match_documents_hybrid.
-// 3. Merge + dedup por id (UUID).
+// 3. Merge + dedup por id.
 // 4. Rerank Cohere com a query TÉCNICA (queries[1]) em vez da conversacional.
 // 5. Status em 3 camadas:
 //      - STRONG (>= 0.35) → BASE_ENCONTRADA
@@ -62,11 +62,48 @@ export interface RagFilters {
 
 // ─── 1. Query Expansion ───────────────────────────────────────────────────────
 
+function normalizeSearchText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function getDeterministicQueryExpansions(originalQuery: string): string[] {
+  const normalized = normalizeSearchText(originalQuery);
+  const expansions: string[] = [];
+
+  if (/\b(tetano|antitetanica|antitetanico)\b/.test(normalized)) {
+    expansions.push(
+      "vacina tétano dT dTpa Refortrix componente tetânico",
+      "dupla adulto dT tríplice bacteriana acelular dTpa tétano",
+    );
+  }
+
+  if (/\b(infanrix[\s-]*penta|pentavalente|penta)\b/.test(normalized)) {
+    expansions.push(
+      "Infanrix penta contraindicação hipersensibilidade não deve ser administrada",
+      "Infanrix penta vacina pentavalente bula contraindicações componentes",
+    );
+  }
+
+  if (/\b(contraindicacao|contraindicacoes|contraindicado|contraindicada)\b/.test(normalized)) {
+    expansions.push(
+      `${originalQuery} hipersensibilidade não deve ser administrada contraindicada`,
+    );
+  }
+
+  return expansions;
+}
+
 /**
- * Gera 2 a 3 variações da query original para melhorar o recall da busca vetorial.
- * Ex: "pode dar gripe pra grávida?" → ["vacina influenza gestante", "gripe grávida segurança", ...]
+ * Gera variações da query original para melhorar o recall da busca vetorial.
+ * Inclui sinônimos determinísticos para termos críticos do domínio antes da
+ * expansão por LLM, evitando que perguntas comuns caiam em BASE_VAZIA.
  */
 async function expandQuery(originalQuery: string): Promise<string[]> {
+  const deterministicQueries = getDeterministicQueryExpansions(originalQuery);
+
   try {
     const response = await withRetry(
       () =>
@@ -108,15 +145,17 @@ async function expandQuery(originalQuery: string): Promise<string[]> {
           .slice(0, 3)
       : [];
 
-    // A query original SEMPRE entra (cobre o caso da expansão divergir do tema)
-    const allQueries = [originalQuery, ...variations];
-    const uniqueQueries = [...new Set(allQueries)].slice(0, 4);
+    // A query original SEMPRE entra (cobre o caso da expansão divergir do tema).
+    // As expansões determinísticas vêm antes das geradas por LLM porque cobrem
+    // sinônimos de alta precisão do catálogo.
+    const allQueries = [originalQuery, ...deterministicQueries, ...variations];
+    const uniqueQueries = [...new Set(allQueries)].slice(0, 7);
 
     console.log(`[RAG] Query expansion: ${uniqueQueries.map((q) => `"${q}"`).join(" | ")}`);
     return uniqueQueries;
   } catch (err) {
     console.warn(`[RAG] Expansion falhou, usando query original: ${(err as Error).message}`);
-    return [originalQuery];
+    return [...new Set([originalQuery, ...deterministicQueries])];
   }
 }
 
@@ -149,6 +188,36 @@ async function hybridSearch(
 
   if (error) {
     console.error(`[RAG] Erro na busca híbrida para "${query}":`, error.message);
+    return lexicalSearch(query, filter);
+  }
+
+  return (data as DocumentRow[]) ?? [];
+}
+
+async function lexicalSearch(
+  query: string,
+  filter: RagFilters = {},
+): Promise<DocumentRow[]> {
+  let request = getSupabase()
+    .from("documents")
+    .select("id, content, metadata")
+    .textSearch("fts", query, {
+      type: "websearch",
+      config: "portuguese",
+    })
+    .limit(config.agent.ragTopK);
+
+  if (Object.keys(filter).length > 0) {
+    request = request.contains("metadata", filter as Record<string, unknown>);
+  }
+
+  const { data, error } = await withRetry(
+    async () => request,
+    { label: "supabase.documents_fts_fallback" },
+  );
+
+  if (error) {
+    console.error(`[RAG] Fallback FTS falhou para "${query}":`, error.message);
     return [];
   }
 
@@ -174,7 +243,7 @@ interface RagLogRow {
 function logRagAsync(row: RagLogRow): void {
   void (async () => {
     try {
-      const { error } = await getSupabase().from("rag_logs").insert({
+      const payload = {
         conversation_id: row.conversation_id ?? null,
         original_query: row.original_query,
         expanded_queries: row.expanded_queries,
@@ -184,7 +253,17 @@ function logRagAsync(row: RagLogRow): void {
         doc_ids: row.doc_ids,
         latency_ms: row.latency_ms,
         cache_hit: row.cache_hit,
-      });
+      };
+      const { error } = await getSupabase().from("rag_logs").insert(payload);
+      if (error?.message.includes("invalid input syntax for type uuid")) {
+        const { error: retryError } = await getSupabase()
+          .from("rag_logs")
+          .insert({ ...payload, doc_ids: [] });
+        if (retryError) {
+          console.warn(`[RAG] log assíncrono falhou: ${retryError.message}`);
+        }
+        return;
+      }
       if (error) {
         console.warn(`[RAG] log assíncrono falhou: ${error.message}`);
       }
@@ -238,8 +317,8 @@ export async function searchDocuments(
       queries.map((q) => hybridSearch(q, filter)),
     );
 
-    // Passo 3: merge + dedup por id (UUID). Mais robusto que prefixo de conteúdo.
-    const seenIds = new Set<string>();
+    // Passo 3: merge + dedup por id. Mais robusto que prefixo de conteúdo.
+    const seenIds = new Set<string | number>();
     const allDocs: DocumentRow[] = [];
     for (const docs of resultSets) {
       for (const doc of docs) {
@@ -302,6 +381,7 @@ export async function searchDocuments(
     // Doc ids dos documentos rankeados (na ordem do rerank)
     const docIds = ranked
       .map((r) => allDocs[r.index]?.id)
+      .map((id) => String(id))
       .filter((id): id is string => !!id);
 
     if (status === "empty") {
