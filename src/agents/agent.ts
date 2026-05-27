@@ -87,7 +87,7 @@ function buildInstitutionalGreeting(name: string): string {
   const greeting = getCurrentGreeting();
   const namePart = name ? `, ${name}` : "";
 
-  return `${greeting}${namePart}! Sou a Ana, da ${PUBLIC_BRAND_NAME}. Estou por aqui para te ajudar. O que você precisa hoje?`;
+  return `${greeting}${namePart}! Sou a Maria Antônia, da ${PUBLIC_BRAND_NAME}. Estou por aqui para te ajudar. O que você precisa hoje?`;
 }
 
 // ─── Agent Loop ───────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ export async function runAgent(
   const savedBant = (contactAttrs.bant as Record<string, string> | undefined) ?? {};
 
   // ─── System prompt ────────────────────────────────────────────────────────
-  // firstContact: nenhuma mensagem da Ana ainda → primeira interação real.
+  // firstContact: nenhuma mensagem da Maria Antônia ainda → primeira interação real.
   // (history vem do Chatwoot já filtrado por role="user"|"assistant")
   const firstContact = !history.some((h) => h.role === "assistant");
 
@@ -276,14 +276,14 @@ export async function runAgent(
 
 // ─── Splitter LLM (estilo n8n "Agente divisor de mensagens") ──────────────────
 //
-// Recebe a resposta da Ana e devolve 1 ou 2 partes naturais, simulando
+// Recebe a resposta da Maria Antônia e devolve 1 ou 2 partes naturais, simulando
 // digitação humana no WhatsApp. Mensagens curtas (≤120 chars) pulam o LLM
 // para economizar latência/custo. Em caso de falha do LLM, cai no splitter
 // regex (splitIntoMessages) abaixo.
 
 function buildSplitterPrompt(maxParts: number): string {
   return `## PAPEL
-Você divide uma mensagem da assistente Ana em 1 a ${maxParts} parte(s), simulando o envio natural de WhatsApp. Não reescreva nem traduza — só separe.
+Você divide uma mensagem da assistente Maria Antônia em 1 a ${maxParts} parte(s), simulando o envio natural de WhatsApp. Não reescreva nem traduza — só separe.
 
 ## REGRAS
 - Devolva 1 parte se a mensagem for curta, direta ou tiver uma única ideia.
