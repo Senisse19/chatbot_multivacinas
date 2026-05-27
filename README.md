@@ -1,6 +1,6 @@
-# Chatbot MultiVacinas — Ana
+# Chatbot MultiVacinas — Maria Antônia
 
-Serviço Node.js/TypeScript que substitui o fluxo n8n da MultiVacinas. A assistente virtual chama-se **Ana**.
+Serviço Node.js/TypeScript que substitui o fluxo n8n da MultiVacinas. A assistente virtual chama-se **Maria Antônia**.
 
 ## Stack
 - **Express** — servidor webhook
@@ -19,7 +19,7 @@ src/
 ├── types/
 │   └── chatwoot.types.ts       # Tipos do webhook
 ├── agents/
-│   ├── prompt.ts               # System prompt da Ana (humanizado)
+│   ├── prompt.ts               # System prompt da Maria Antônia (humanizado)
 │   ├── tools.ts                # Ferramentas OpenAI (function calling)
 │   └── agent.ts                # Agentic loop + split de mensagens
 ├── controllers/
@@ -154,7 +154,7 @@ order by freq desc;
 
 ## Persistência do BANT
 
-A Ana grava o BANT que coleta em `additional_attributes.bant` no contato (visível no Chatwoot). Em conversas futuras com o mesmo contato, ela carrega o BANT existente e não repete perguntas. A escalação para humano (Telegram) reaproveita o BANT salvo automaticamente.
+A Maria Antônia grava o BANT que coleta em `additional_attributes.bant` no contato (visível no Chatwoot). Em conversas futuras com o mesmo contato, ela carrega o BANT existente e não repete perguntas. A escalação para humano (Telegram) reaproveita o BANT salvo automaticamente.
 
 ## Estrutura recomendada de metadados nos documentos
 
