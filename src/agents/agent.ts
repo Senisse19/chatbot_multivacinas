@@ -224,6 +224,15 @@ export async function runAgent(
       { label: "openai.chat.completions" },
     );
 
+    const cachedTokens = response.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+    const totalPromptTokens = response.usage?.prompt_tokens ?? 0;
+    if (totalPromptTokens > 0) {
+      const pct = Math.round((100 * cachedTokens) / totalPromptTokens);
+      console.log(
+        `[Agent] prompt_tokens=${totalPromptTokens}, cached=${cachedTokens} (${pct}%)`,
+      );
+    }
+
     const choice = response.choices[0];
     const message = choice.message;
 
