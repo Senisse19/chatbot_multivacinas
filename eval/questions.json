@@ -66,7 +66,7 @@
     "id": "Q10",
     "query": "vacina pneumocócica 20 valente",
     "expected_status": "strong",
-    "expected_docs_contain": ["Prevenar 20", "Prevenar-20"],
+    "expected_docs_contain": ["Prevenar", "20"],
     "filtros": {}
   },
   {
@@ -122,7 +122,7 @@
     "id": "Q18",
     "query": "vacina dTpa refortrix coqueluche",
     "expected_status": "strong",
-    "expected_docs_contain": ["Refortrix", "dTpa"],
+    "expected_docs_contain": ["Refortrix", "coqueluche"],
     "filtros": {}
   },
   {

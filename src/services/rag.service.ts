@@ -87,6 +87,36 @@ function getDeterministicQueryExpansions(originalQuery: string): string[] {
     );
   }
 
+  if (/\b(febre\s+amarela|amarela)\b/.test(normalized)) {
+    expansions.push(
+      "vacina febre amarela Stamaril imunização contra febre amarela",
+    );
+  }
+
+  if (/\b(dengue)\b/.test(normalized)) {
+    expansions.push(
+      "vacina dengue Qdenga imunização contra dengue",
+    );
+  }
+
+  if (/\b(combinada|hepatite\s+a\s+b|hepatite\s+a\s+e\s+b)\b/.test(normalized)) {
+    expansions.push(
+      "vacina hepatite A e B combinada Twinrix",
+    );
+  }
+
+  if (/\b(tetraviral|sarampo\s+caxumba\s+rubéola\s+catapora|sarampo\s+caxumba\s+rubeola\s+catapora)\b/.test(normalized)) {
+    expansions.push(
+      "vacina sarampo caxumba rubéola varicela catapora tetraviral ProQuad",
+    );
+  }
+
+  if (/\b(catapora|varicela)\b/.test(normalized)) {
+    expansions.push(
+      "vacina catapora varicela Varivax",
+    );
+  }
+
   if (/\b(contraindicacao|contraindicacoes|contraindicado|contraindicada)\b/.test(normalized)) {
     expansions.push(
       `${originalQuery} hipersensibilidade não deve ser administrada contraindicada`,

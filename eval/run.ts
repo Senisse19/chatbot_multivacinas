@@ -53,6 +53,9 @@ async function run(): Promise<void> {
   const rows: EvalRow[] = [];
 
   for (const q of questions) {
+    // Dorme 6.5 segundos antes de cada chamada para evitar rate limit (429) da chave trial do Cohere (max 10 req/min)
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+
     const t0 = Date.now();
     try {
       const result = await searchDocuments(q.query, q.filtros ?? {});
