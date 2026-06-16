@@ -44,7 +44,7 @@ export const TOOLS: ChatCompletionTool[] = [
               },
               tipo: {
                 type: "string",
-                enum: ["bula", "calendario"],
+                enum: ["bula", "calendario", "contraindicacoes"],
               },
               vacina: {
                 type: "string",
