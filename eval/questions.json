@@ -195,5 +195,21 @@
     "expected_docs_contain": [],
     "filtros": {},
     "_note": "Query intencionalmente vaga — esperamos topScore baixo e status empty/weak."
+  },
+  {
+    "id": "Q29",
+    "query": "quais as reações adversas da vacina da gripe?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["gripe"],
+    "filtros": {},
+    "_note": "Pergunta informacional de reações — deve recuperar conteúdo da bula de gripe (bot enquadra como raras)."
+  },
+  {
+    "id": "Q30",
+    "query": "vocês têm a vacina tetravalente da gripe?",
+    "expected_status": "strong",
+    "expected_docs_contain": ["gripe"],
+    "filtros": {},
+    "_note": "Nome genérico pós-rename (Influvac→Vacina Tetravalente) deve recuperar as bulas de gripe."
   }
 ]

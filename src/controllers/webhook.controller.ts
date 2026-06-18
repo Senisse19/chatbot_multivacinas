@@ -16,6 +16,11 @@ const openai = new OpenAI({ apiKey: config.openai.apiKey });
 // indicador em ~10-15s, então refrescamos a cada 8s enquanto o agente roda.
 const TYPING_REFRESH_MS = 8_000;
 
+// Aviso padrão de handover, usado só se o agente não gerou texto de transição.
+// Garante que o usuário nunca fique no escuro quando o bot passa para um humano.
+const HANDOVER_FALLBACK_MSG =
+  "Vou te transferir para um atendente da nossa equipe, tá? Em instantes alguém continua seu atendimento por aqui 😊";
+
 // ─── Webhook Principal ────────────────────────────────────────────────────────
 
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
@@ -118,9 +123,21 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
       await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false);
     }
 
-    // Se escalado, o agente já enviou a mensagem de transição
+    // Handover: o agente NÃO envia sozinho a mensagem de transição (a tool só
+    // alerta a equipe e muda o status). Então enviamos aqui o texto que o LLM
+    // gerou (transição/despedida); se vier vazio, um aviso padrão — o usuário
+    // precisa saber que vai falar com um atendente, senão a conversa só "morre".
     if (escalated) {
       console.log(`[Webhook] Conversa ${ctx.conversationId} escalada para humano.`);
+      const avisos = replies.length > 0 ? replies : [HANDOVER_FALLBACK_MSG];
+      for (const aviso of avisos) {
+        await chatwootService.setTyping(ctx.accountId, ctx.conversationId, true);
+        await sleep(typingDelay(aviso));
+        await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false);
+        await chatwootService.sendMessage(ctx.accountId, ctx.conversationId, aviso);
+        await saveMessageHistory(phone, ctx.conversationId, "assistant", aviso);
+        await sleep(500);
+      }
       return;
     }
 

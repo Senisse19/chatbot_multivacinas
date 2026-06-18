@@ -99,6 +99,18 @@ function getDeterministicQueryExpansions(originalQuery: string): string[] {
     );
   }
 
+  if (/\b(gripe|influenza|tetravalente|tetra|quadrivalente)\b/.test(normalized)) {
+    expansions.push(
+      "vacina gripe influenza tetravalente quadrivalente Influvac FluQuadri Efluelda",
+    );
+  }
+
+  if (/\b(reacao|reacoes|efeito|efeitos|colateral|colaterais|adverso|adversa|adversos|adversas)\b/.test(normalized)) {
+    expansions.push(
+      `${originalQuery} reações adversas eventos adversos efeitos colaterais frequência muito comum comum incomum`,
+    );
+  }
+
   if (/\b(combinada|hepatite\s+a\s+b|hepatite\s+a\s+e\s+b)\b/.test(normalized)) {
     expansions.push(
       "vacina hepatite A e B combinada Twinrix",

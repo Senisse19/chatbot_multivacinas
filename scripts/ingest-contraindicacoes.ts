@@ -38,7 +38,7 @@ const SECTION_META: Record<string, SectionMeta> = {
   "DTPA": { vacina: "dtpa", faixa_etaria: "todos" },
   "DENGUE": { vacina: "qdenga", faixa_etaria: "todos" },
   "FEBRE AMARELA": { vacina: "stamaril", faixa_etaria: "todos" },
-  "GRIPE 2026": { vacina: "gripe", faixa_etaria: "todos" },
+  "GRIPE 2026": { vacina: "tetravalente", faixa_etaria: "todos" },
   "HEPATITE A ADULTO": { vacina: "vaqta", faixa_etaria: "adulto" },
   "HEPATITE A INFANTIL": { vacina: "vaqta", faixa_etaria: "crianca" },
   "HEPATITE A + B": { vacina: "twinrix", faixa_etaria: "todos" },

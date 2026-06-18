@@ -48,7 +48,7 @@ export const TOOLS: ChatCompletionTool[] = [
               },
               vacina: {
                 type: "string",
-                description: "Slug da vacina, ex.: 'gardasil_9', 'shingrix'.",
+                description: "Slug da vacina, ex.: 'gardasil_9', 'shingrix', 'tetravalente' (gripe).",
               },
             },
           },
@@ -266,16 +266,20 @@ export async function executeTool(
       let resumo = (args.resumo_bant as string) || "";
       const motivo = args.motivo as string;
 
-      // Dedup: se a conversa já tem agente-off OU já não está open, não duplica.
+      // Dedup APENAS do alerta/label (evita Telegram duplicado se o modelo
+      // chamar a tool duas vezes no mesmo turno). O status `pending` é sempre
+      // reaplicado no final — ele é o gating real (ver isEscalated).
       const existingLabels = await chatwootService.getLabels(
         ctx.accountId,
         ctx.conversationId,
       );
-      if (existingLabels.includes("agente-off")) {
+      const jaEscalada = existingLabels.includes("agente-off");
+      if (jaEscalada) {
         console.log(
-          `[Tool] escalar_humano → conversa ${ctx.conversationId} já escalada (label), ignorando duplicação.`,
+          `[Tool] escalar_humano → conversa ${ctx.conversationId} já tem label agente-off; pulo alerta/label, mas garanto status=pending.`,
         );
-        return { output: "Conversa já escalada anteriormente.", escalated: true };
+        await chatwootService.toggleStatus(ctx.accountId, ctx.conversationId, "pending");
+        return { output: "Conversa já escalada; status reforçado.", escalated: true };
       }
 
       // Se o modelo não passou resumo, usar BANT persistido (Fase 4.1)
@@ -324,20 +328,18 @@ export async function executeTool(
   }
 }
 
-// ─── Verificar se a conversa já foi escalada ──────────────────────────────────
+// ─── Verificar se o bot está desligado para a conversa ────────────────────────
 //
-// Considera escalada se:
-//   - tem a label `agente-off`; OU
-//   - tem a label `resolvido`; OU
-//   - o status é diferente de `open` (pending/resolved/snoozed), mecanismo
-//     nativo do Chatwoot, reversível pelo botão "Reabrir".
+// O STATUS é a única fonte de verdade (decisão de produto):
+//   - `open`                       → bot LIGADO
+//   - `pending`/`resolved`/`snoozed` → bot DESLIGADO (atendimento humano/encerrado)
 //
-// Essa abordagem dupla protege contra o bug #12792 do Chatwoot (labels não
-// aparecem na UI), garantindo que pelo menos o status seja o ponto de
-// reabertura visível para o atendente.
+// Assim, clicar "Reabrir" no Chatwoot (status volta a `open`) RELIGA o bot na
+// hora. As labels `agente-off`/`resolvido` continuam sendo aplicadas como
+// marcadores informativos (filtro/histórico), mas NÃO travam mais o bot — isso
+// evitava a reativação por causa do bug #12792 (label invisível que persistia
+// após o "Reabrir"). O parâmetro `labels` é mantido por compatibilidade.
 
-export function isEscalated(labels: string[], status?: string): boolean {
-  if (labels.includes("agente-off") || labels.includes("resolvido")) return true;
-  if (status && status !== "open") return true;
-  return false;
+export function isEscalated(_labels: string[], status?: string): boolean {
+  return !!status && status !== "open";
 }
