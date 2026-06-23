@@ -8,11 +8,12 @@ import { getCached, setCached } from "./rag.cache";
 // ─── Clientes (singleton) ─────────────────────────────────────────────────────
 
 import { getSupabase } from "./supabase.client";
+import { createOpenAI } from "../utils/openai.client";
 let openaiClient: OpenAI;
 let cohereClient: CohereClient;
 
 function getOpenAI(): OpenAI {
-  if (!openaiClient) openaiClient = new OpenAI({ apiKey: config.openai.apiKey });
+  if (!openaiClient) openaiClient = createOpenAI();
   return openaiClient;
 }
 function getCohere(): CohereClient {

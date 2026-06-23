@@ -10,8 +10,9 @@ import { TOOLS, executeTool, ToolContext } from "./tools";
 import { MessageContext } from "../types/chatwoot.types";
 import { chatwootService } from "../services/chatwoot.service";
 import { withRetry } from "../utils/retry";
+import { createOpenAI } from "../utils/openai.client";
 
-const openai = new OpenAI({ apiKey: config.openai.apiKey });
+const openai = createOpenAI();
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 

@@ -1,6 +1,4 @@
 import { Request, Response } from "express";
-import OpenAI from "openai";
-import { config } from "../config";
 import { getUnitByInboxId } from "../config/units";
 import { ChatwootWebhookPayload, MessageContext } from "../types/chatwoot.types";
 import { chatwootService } from "../services/chatwoot.service";
@@ -9,8 +7,10 @@ import { runAgent, splitWithLLM } from "../agents/agent";
 import { isEscalated } from "../agents/tools";
 import { sendEscalationAlert } from "../services/telegram.service";
 import { upsertCliente, saveMessageHistory } from "../services/database.service";
+import { createOpenAI } from "../utils/openai.client";
+import { isTransientError } from "../utils/retry";
 
-const openai = new OpenAI({ apiKey: config.openai.apiKey });
+const openai = createOpenAI();
 
 // Intervalo de refresh do "digitando…" — Chatwoot/WhatsApp derrubam o
 // indicador em ~10-15s, então refrescamos a cada 8s enquanto o agente roda.
@@ -67,8 +67,22 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
       content = await transcribeAudio(payload.attachments[0].data_url);
     }
 
+    // Áudio que não pôde ser transcrito (Whisper falhou/instável): em vez de
+    // seguir com texto vazio, peça que o cliente escreva.
+    if (isAudio && !content.trim()) {
+      console.log(`[Webhook] Áudio ${msg.id} não transcrito, pedindo texto.`);
+      await chatwootService
+        .sendMessage(
+          msg.account_id,
+          conv.id,
+          "Não consegui ouvir seu áudio agora 🙈 pode me escrever por texto, por favor?",
+        )
+        .catch(() => {});
+      return;
+    }
+
     // Ignorar mensagem sem conteúdo (ex: sticker, doc sem legenda)
-    if (!content.trim() && !isAudio) {
+    if (!content.trim()) {
       console.log(`[Webhook] Mensagem ${msg.id} sem conteúdo, ignorando.`);
       return;
     }
@@ -159,26 +173,50 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
   } catch (err) {
     console.error("[Webhook] Erro no processamento:", err);
     if (ctx) {
-      await sendFallbackAndEscalate(ctx).catch((fallbackErr) => {
+      await handleProcessingError(ctx, err).catch((fallbackErr) => {
         console.error("[Webhook] Fallback também falhou:", fallbackErr);
       });
     }
   }
 }
 
-// ─── Fallback de falha técnica ────────────────────────────────────────────────
+// ─── Tratamento de falha técnica ──────────────────────────────────────────────
 //
-// Quando algo dá errado no meio do processamento (OpenAI/Cohere/Supabase fora,
-// timeout, erro inesperado), o usuário não pode ficar no escuro. Mandamos uma
-// mensagem cordial, marcamos a conversa como agente-off (para não tentar de
-// novo) e alertamos a equipe via Telegram.
+// Erro TRANSITÓRIO (rede/timeout/5xx — ex.: ERR_STREAM_PREMATURE_CLOSE da OpenAI):
+//   NÃO desliga o bot. Pede para reenviar e mantém a conversa `open`, então a
+//   próxima mensagem é processada normalmente (auto-recuperação). Avisa a equipe.
+// Erro PERMANENTE/desconhecido:
+//   Handover real — apologia + agente-off + status `pending` (gating por status)
+//   + alerta no Telegram.
 
-async function sendFallbackAndEscalate(ctx: MessageContext): Promise<void> {
-  // Evita duplicar fallback se já está escalado
+async function handleProcessingError(ctx: MessageContext, err: unknown): Promise<void> {
+  await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false).catch(() => {});
+
+  if (isTransientError(err)) {
+    console.log(
+      `[Webhook] Erro transitório na conversa ${ctx.conversationId} — bot mantido ligado (sem agente-off).`,
+    );
+    await chatwootService.sendMessage(
+      ctx.accountId,
+      ctx.conversationId,
+      "Tive uma instabilidade rápida aqui 🙈 Pode me reenviar sua última mensagem, por favor?",
+    );
+    // Avisa a equipe (informativo), mas NÃO escala/desliga o bot.
+    await sendEscalationAlert({
+      phone: ctx.phone,
+      name: ctx.name,
+      lastMessage: ctx.content,
+      conversationId: ctx.conversationId,
+      summary: "Instabilidade técnica transitória (rede/OpenAI). Bot segue ligado; pedi reenvio ao cliente.",
+      telegramChatId: ctx.unit.telegramChatId,
+      unitName: ctx.unit.fullName,
+    }).catch(() => {});
+    return;
+  }
+
+  // Permanente/desconhecido → handover real. Evita duplicar se já escalado.
   const labels = await chatwootService.getLabels(ctx.accountId, ctx.conversationId);
   if (labels.includes("agente-off")) return;
-
-  await chatwootService.setTyping(ctx.accountId, ctx.conversationId, false).catch(() => {});
 
   await chatwootService.sendMessage(
     ctx.accountId,
@@ -187,6 +225,8 @@ async function sendFallbackAndEscalate(ctx: MessageContext): Promise<void> {
   );
 
   await chatwootService.addLabel(ctx.accountId, ctx.conversationId, "agente-off");
+  // Gating do bot é por STATUS (ver isEscalated): precisa de `pending` para desligar.
+  await chatwootService.toggleStatus(ctx.accountId, ctx.conversationId, "pending");
 
   await sendEscalationAlert({
     phone: ctx.phone,
