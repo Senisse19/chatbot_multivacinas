@@ -9,7 +9,8 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src --ext .ts",
     "eval:rag": "tsx eval/run.ts",
-    "ingest:contra": "tsx scripts/ingest-contraindicacoes.ts"
+    "ingest:contra": "tsx scripts/ingest-contraindicacoes.ts",
+    "ingest:calendarios": "tsx scripts/ingest-rag2-calendars.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.7",
+    "mammoth": "^1.12.0",
     "pdfkit": "^0.18.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
