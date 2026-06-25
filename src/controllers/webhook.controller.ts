@@ -16,6 +16,12 @@ const openai = createOpenAI();
 // indicador em ~10-15s, então refrescamos a cada 8s enquanto o agente roda.
 const TYPING_REFRESH_MS = 8_000;
 
+// Cache de IDs processados para ignorar webhooks duplicados do Chatwoot.
+// O Chatwoot v3+ pode disparar o mesmo message_created duas vezes em falhas de
+// entrega. TTL de 30s é suficiente para cobrir qualquer retry do Chatwoot.
+const processedMessageIds = new Map<number, number>(); // messageId → timestamp
+const DEDUP_TTL_MS = 30_000;
+
 // Aviso padrão de handover, usado só se o agente não gerou texto de transição.
 // Garante que o usuário nunca fique no escuro quando o bot passa para um humano.
 const HANDOVER_FALLBACK_MSG =
@@ -43,13 +49,27 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     if (!msg) return;
 
+    // ── 1.5 Deduplicação de webhooks duplicados do Chatwoot ───────────────
+    const nowTs = Date.now();
+    for (const [id, ts] of processedMessageIds) {
+      if (nowTs - ts > DEDUP_TTL_MS) processedMessageIds.delete(id);
+    }
+    if (processedMessageIds.has(msg.id)) {
+      console.log(`[Webhook] Mensagem ${msg.id} já processada (duplicata do Chatwoot), ignorando.`);
+      return;
+    }
+    processedMessageIds.set(msg.id, nowTs);
+
     // ── 2. Ignorar conversas escaladas/encerradas ─────────────────────────
     // Considera label `agente-off`/`resolvido` E status diferente de `open`.
     // Atendente reabre a conversa pelo botão "Reabrir" no Chatwoot (volta para
     // status=open) — esse é o mecanismo de "agente-on" via UI nativa.
     if (isEscalated(conv.labels ?? [], conv.status)) {
+      const labels = conv.labels ?? [];
+      const isManualEscalation = !labels.includes("agente-off") && !labels.includes("resolvido");
+      const reason = isManualEscalation ? "encerrada manualmente" : "escalada/encerrada";
       console.log(
-        `[Webhook] Conversa ${conv.id} escalada/encerrada (status=${conv.status}, labels=${JSON.stringify(conv.labels ?? [])}), ignorando.`,
+        `[Webhook] Conversa ${conv.id} ${reason} (status=${conv.status}, labels=${JSON.stringify(labels)}), ignorando.`,
       );
       return;
     }

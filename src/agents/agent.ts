@@ -132,11 +132,19 @@ export async function runAgent(
   // (history vem do Chatwoot já filtrado por role="user"|"assistant")
   const firstContact = !history.some((h) => h.role === "assistant");
 
+  // Remover do histórico as mensagens que já estão no batch atual para evitar
+  // duplicatas no contexto do LLM. Prefere match por messageId (preciso);
+  // cai em content apenas se não houver IDs válidos (guarda-chuva de segurança).
+  const batchIds = new Set(messages.map((m) => m.messageId).filter(Boolean));
   const batchContents = new Set(
     messages.map((m) => m.content).filter((c) => c && c.trim().length > 0),
   );
   const cleanHistory = history.filter(
-    (h) => !(h.role === "user" && batchContents.has(h.content)),
+    (h) =>
+      !(
+        h.role === "user" &&
+        (batchIds.size > 0 ? batchIds.has(h.id) : batchContents.has(h.content))
+      ),
   );
 
   if (cleanHistory.length !== history.length - messages.length) {

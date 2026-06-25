@@ -161,7 +161,7 @@ class ChatwootService {
     accountId: number,
     conversationId: number,
     limit = 50,
-  ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  ): Promise<Array<{ id: number; role: "user" | "assistant"; content: string }>> {
     const res = await this.client
       .get(
         `/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
@@ -169,6 +169,7 @@ class ChatwootService {
       .catch(() => ({ data: { payload: [] } }));
 
     const messages: Array<{
+      id: number;
       message_type: number;
       content: string | null;
       private?: boolean;
@@ -187,6 +188,7 @@ class ChatwootService {
       )
       .slice(-limit)
       .map((m) => ({
+        id: m.id,
         role: m.message_type === 0 ? "user" : "assistant",
         content: m.content!,
       }));
